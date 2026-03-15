@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>音乐播放器（完整版）</title>
+    <style>
+        body {
+            background: #1a1a1a;
+            color: #fff;
+            padding: 20px;
+            font-family: Arial;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        #player {
+            width: 100%;
+            margin: 20px 0;
+        }
+
+        .control-buttons {
+            margin: 10px 0;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        #list {
+            max-height: 400px;
+            overflow: auto;
+            border: 1px solid #444;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+
+        .song {
+            padding: 8px;
+            cursor: pointer;
+            border-bottom: 1px solid #333;
+            border-radius: 2px;
+        }
+
+        .song:hover {
+            background: #333;
+        }
+
+        .song.active {
+            background: #4CAF50;
+            color: #fff;
+        }
+
+        #status {
+            color: #0f0;
+            margin: 10px 0;
+            font-size: 16px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>🎵 音乐播放器（支持子目录+上下曲）</h2>
+
+    <!-- 控制按钮区 -->
+    <div class="control-buttons">
+        <button onclick="loadAllMusic()">🔄 刷新列表</button>
+        <div class="btn-group">
+            <button onclick="prevSong()" id="prevBtn" disabled>⬅️ 上一曲</button>
+            <button onclick="playAll()" id="playAllBtn" disabled>▶️ 列表循环</button>
+            <button onclick="nextSong()" id="nextBtn" disabled>➡️ 下一曲</button>
+        </div>
+    </div>
+
+    <div id="list">加载中...</div>
+    <div id="status">初始化...</div>
+    <audio id="player" controls></audio>
+
+    <script>
+        const player = document.getElementById('player');
+        const list = document.getElementById('list');
+        const status = document.getElementById('status');
+        const playAllBtn = document.getElementById('playAllBtn');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+
+        const exts = ['mp3', 'aac', 'flac', 'wav', 'ogg', 'm4a', 'wma'];
+        let allSongs = [];
+        let currentIdx = 0;
+        let isLoopAll = false;
+        const SERVER = 'http://127.0.0.1:3000/';
+        player.loop = false;
+
+        // 页面加载初始化
+        window.onload = loadAllMusic;
+
+        // 修复URL编码问题
+        function fixUrlEncoding(url) {
+            let fixed = decodeURIComponent(decodeURIComponent(url));
+            return encodeURI(fixed).replace(/%20/g, ' ');
+        }
+
+        // 加载所有音乐
+        async function loadAllMusic() {
+            allSongs = [];
+            list.innerHTML = '正在扫描所有目录...';
+            status.textContent = '扫描中，请稍候...';
+            setButtonStates(false);
+
+            // 扫描根目录和子目录
+            await scanDir('');
+            const subDirs = ['林俊杰/', '周杰伦/', '再见18班/', 'MC/'];
+            for (const dir of subDirs) {
+                await scanDir(dir);
+            }
+
+            // 去重并渲染
+            allSongs = [...new Map(allSongs.map(item => [item.url, item])).values()];
+            if (allSongs.length === 0) {
+                list.innerHTML = `
+                    <div style="color:#ff9800;">⚠️ 未找到音乐文件</div>
+                    <div style="font-size:14px;">支持格式：${exts.join(', ')}</div>
+                `;
+                status.textContent = '✅ 服务器连接成功，无音乐文件';
+            } else {
+                renderList();
+                status.textContent = `✅ 共找到 ${allSongs.length} 首音乐`;
+                setButtonStates(true);
+            }
+        }
+
+        // 扫描单个目录
+        async function scanDir(dir) {
+            try {
+                const dirUrl = fixUrlEncoding(SERVER + dir);
+                const res = await fetch(dirUrl);
+                const html = await res.text();
+                const fileRegex = /<a\s+href="([^"]+\.(mp3|aac|flac|wav|ogg|m4a|wma))"/gi;
+                let match;
+
+                while ((match = fileRegex.exec(html)) !== null) {
+                    let rawHref = match[1];
+                    let fixedHref = fixUrlEncoding(rawHref);
+                    let fullUrl = fixUrlEncoding(SERVER + dir + fixedHref);
+
+                    allSongs.push({
+                        url: fullUrl,
+                        name: decodeURIComponent(fixedHref),
+                        path: dir + fixedHref
+                    });
+                }
+            } catch (e) {
+                console.log(`扫描目录 ${dir} 失败：`, e);
+            }
+        }
+
+        // 渲染音乐列表
+        function renderList() {
+            list.innerHTML = '';
+            allSongs.forEach((song, idx) => {
+                const div = document.createElement('div');
+                div.className = 'song';
+                div.textContent = `${idx + 1}. ${song.name}`;
+                div.onclick = () => playSong(idx);
+                list.appendChild(div);
+            });
+        }
+
+        // 播放指定歌曲
+        function playSong(idx) {
+            if (!allSongs[idx] || allSongs.length === 0) return;
+
+            currentIdx = idx;
+            // 高亮当前播放项
+            document.querySelectorAll('.song').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.song')[idx].classList.add('active');
+
+            // 播放音乐
+            player.pause();
+            player.src = fixUrlEncoding(allSongs[idx].url);
+            player.play().then(() => {
+                status.textContent = `▶️ 正在播放：${allSongs[idx].name}`;
+            }).catch(err => {
+                status.textContent = `❌ 播放失败：${allSongs[idx].name} - ${err.message}`;
+            });
+        }
+
+        // 上一曲功能
+        function prevSong() {
+            if (allSongs.length === 0) return;
+            // 循环到最后一首
+            currentIdx = (currentIdx - 1 + allSongs.length) % allSongs.length;
+            playSong(currentIdx);
+            // 如果是列表循环模式，保持循环
+            if (isLoopAll) {
+                isLoopAll = true;
+            }
+        }
+
+        // 下一曲功能
+        function nextSong() {
+            if (allSongs.length === 0) return;
+            // 循环到第一首
+            currentIdx = (currentIdx + 1) % allSongs.length;
+            playSong(currentIdx);
+            // 如果是列表循环模式，保持循环
+            if (isLoopAll) {
+                isLoopAll = true;
+            }
+        }
+
+        // 列表循环播放
+        function playAll() {
+            if (allSongs.length === 0) return;
+            isLoopAll = true;
+            playSong(0);
+        }
+
+        // 设置按钮状态
+        function setButtonStates(enabled) {
+            playAllBtn.disabled = !enabled;
+            prevBtn.disabled = !enabled;
+            nextBtn.disabled = !enabled;
+        }
+
+        // 播放结束自动切歌（列表循环）
+        player.onended = () => {
+            if (isLoopAll && allSongs.length > 0) {
+                nextSong();
+            }
+        };
+
+        // 播放错误监听
+        player.addEventListener('error', (e) => {
+            const errCodes = {
+                1: '资源加载中止',
+                2: '网络错误',
+                3: '解码错误（文件格式不标准）',
+                4: '不支持的格式'
+            };
+            const errMsg = errCodes[e.target.error.code] || '未知错误';
+            status.textContent = `❌ 播放错误：${errMsg}`;
+        });
+    </script>
+</body>
+
+</html>
