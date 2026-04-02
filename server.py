@@ -3,8 +3,16 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 import os
 import urllib.parse
+import signal
+import sys
 
-# 支持的音频格式
+# 支持 Ctrl+C 关闭服务器
+def signal_handler(sig, frame):
+    print("\n✅ 服务器已关闭")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+
 AUDIO_EXTS = {'.mp3', '.aac', '.flac', '.wav', '.ogg', '.m4a', '.wma'}
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -17,9 +25,12 @@ class MyHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
+    def log_message(self, format, *args):
+        # 不打印访问日志（更干净）
+        return
+
     def do_GET(self):
         if self.path == '/api/songs':
-            # 递归获取所有音乐
             songs = []
             for root, dirs, files in os.walk(BASE_DIR):
                 for f in files:
@@ -27,11 +38,10 @@ class MyHandler(BaseHTTPRequestHandler):
                     if ext in AUDIO_EXTS:
                         full_path = os.path.join(root, f)
                         rel_path = os.path.relpath(full_path, BASE_DIR)
-                        web_path = urllib.parse.quote(rel_path.replace('\\', '/'))
+                        web_path = rel_path.replace('\\', '/')
                         songs.append({
-                            'name': f,
-                            'path': web_path,
-                            'dir': os.path.basename(root)
+                            "name": f,
+                            "path": web_path
                         })
 
             self.send_response(200)
@@ -40,7 +50,6 @@ class MyHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(songs, ensure_ascii=False).encode('utf-8'))
             return
 
-        # 播放静态文件
         file_path = os.path.join(BASE_DIR, urllib.parse.unquote(self.path[1:]))
         if os.path.exists(file_path) and os.path.isfile(file_path):
             try:
@@ -59,4 +68,10 @@ class MyHandler(BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     print("✅ 音乐服务器启动：http://localhost:8000/play.html")
-    HTTPServer(('0.0.0.0', 8000), MyHandler).serve_forever()
+    print("✅ 按 Ctrl+C 可安全关闭服务器")
+    server = HTTPServer(('0.0.0.0', 8000), MyHandler)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        server.server_close()
+        print("\n✅ 服务器已关闭")

@@ -1,78 +1,194 @@
 <!DOCTYPE html>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>音乐播放器</title>
-<style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{background:#121212;color:#e0e0e0;padding:25px;font-family:Arial;max-width:90%;margin:0 auto}
-    h2{text-align:center;margin-bottom:20px;color:#1ed760}
-    #player{width:100%;margin:20px 0;border-radius:8px}
-    .control-buttons{display:flex;gap:10px;justify-content:center;margin:15px 0}
-    button{padding:10px 18px;background:#1ed760;color:#000;border:none;border-radius:50px;cursor:pointer}
-    button:disabled{background:#333}
-    #status{color:#1ed760;text-align:center}
-    #list{max-height:35vw;overflow-y:auto;border:1px solid #292929;padding:10px;border-radius:10px;background:#1a1a1a}
-    .song{padding:9px;cursor:pointer;border-bottom:1px solid #242424}
-    .song.active{background:#1ed760;color:#000}
-</style>
+<html lang="zh-CN">
 
-<h2>🎵 音乐播放器</h2>
-<div class="control-buttons">
-    <button onclick="loadSongs()">🔄 刷新</button>
-    <button id="prev" disabled onclick="prev()">⬅️ 上一曲</button>
-    <button id="next" disabled onclick="next()">➡️ 下一曲</button>
-    <button id="loop" disabled onclick="toggleLoop()">🔁 循环</button>
-</div>
-<div id="status">加载中...</div>
-<div id="list"></div>
-<audio id="player" controls></audio>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音乐播放器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
 
-<script>
-    const p = document.getElementById('player')
-    const list = document.getElementById('list')
-    const status = document.getElementById('status')
-    let songs = [], idx = 0, loop = 'list'
+<body class="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white min-h-screen flex flex-col items-center p-4 md:p-6">
+    <!-- 搜索框 -->
+    <div class="w-full max-w-xl mb-4">
+        <input id="search" placeholder="🔍 搜索歌曲名称..."
+            class="w-full px-5 py-3 rounded-full bg-gray-800/70 text-white border border-gray-700 outline-none focus:ring-2 focus:ring-green-400/50 focus:border-green-400 transition-all backdrop-blur-sm">
+    </div>
 
-    window.onload = loadSongs
+    <!-- 控制按钮 -->
+    <div class="flex gap-2 flex-wrap justify-center mb-5">
+        <button onclick="loadSongs()"
+            class="px-5 py-2.5 bg-green-500 hover:bg-green-400 rounded-full transition-colors font-medium shadow-lg shadow-green-500/20">
+            🔄 刷新列表
+        </button>
+        <button id="prev" disabled onclick="prev()"
+            class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 rounded-full disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors font-medium">
+            ⬅️ 上一曲
+        </button>
+        <button id="next" disabled onclick="next()"
+            class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 rounded-full disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors font-medium">
+            ➡️ 下一曲
+        </button>
+        <button id="loop" disabled onclick="toggleLoop()"
+            class="px-5 py-2.5 bg-cyan-500 hover:bg-cyan-400 rounded-full disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors font-medium">
+            🔁 列表循环
+        </button>
+    </div>
 
-    async function loadSongs() {
-        list.innerHTML = '加载中...'
-        const res = await fetch('/api/songs')
-        songs = await res.json()
-        render()
-        status.textContent = `✅ 共 ${songs.length} 首`
-        document.querySelectorAll('button').forEach(b => b.disabled = false)
-    }
+    <!-- 播放状态 -->
+    <div id="status" class="text-green-400 text-center mb-3 font-medium min-h-5">加载中...</div>
 
-    function render() {
-        list.innerHTML = ''
-        songs.forEach((s, i) => {
-            const d = document.createElement('div')
-            d.className = 'song'
-            d.textContent = `${i+1}. ${s.name}`
-            d.onclick = () => play(i)
-            list.appendChild(d)
-        })
-    }
+    <!-- 歌曲列表 -->
+    <div id="list"
+        class="w-full max-w-xl max-h-[45vh] overflow-y-auto bg-gray-800/30 border border-gray-700 rounded-2xl p-3 mb-4 backdrop-blur-sm shadow-lg">
+    </div>
 
-    function play(i) {
-        idx = i
-        p.src = '/'+songs[i].path
-        p.play()
-        document.querySelectorAll('.song').forEach((e, j) => e.classList.toggle('active', j === i))
-        status.textContent = `▶️ ${songs[i].name}`
-    }
+    <!-- 音频播放器 -->
+    <audio id="player" class="w-full max-w-xl my-3" controls></audio>
 
-    function prev() { play((idx-1+songs.length)%songs.length) }
-    function next() { play((idx+1)%songs.length) }
-    function toggleLoop() {
-        loop = loop === 'list' ? 'single' : loop === 'single' ? 'random' : 'list'
-        document.getElementById('loop').textContent = {list:'🔁 列表', single:'🔂 单曲', random:'🔀 随机'}[loop]
-        p.loop = loop === 'single'
-    }
+    <script>
+        const p = document.getElementById('player');
+        const list = document.getElementById('list');
+        const status = document.getElementById('status');
+        const search = document.getElementById('search');
+        const loopBtn = document.getElementById('loop');
 
-    p.onended = () => {
-        if(loop === 'random') play(Math.floor(Math.random()*songs.length))
-        else if(loop === 'list') next()
-    }
-</script>
+        let songs = [], idx = 0, loopMode = 'list';
+        let isLoadingSongs = false;
+
+        // 音量记忆
+        p.volume = parseFloat(localStorage.getItem('volume')) || 0.7;
+        window.onload = loadSongs;
+
+        // 快捷键
+        document.addEventListener('keydown', e => {
+            if (search === document.activeElement) return;
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (songs.length === 0) return;
+                p.paused ? p.play() : p.pause();
+            }
+            if (e.code === 'ArrowLeft') prev();
+            if (e.code === 'ArrowRight') next();
+        });
+
+        // 搜索
+        search.oninput = () => {
+            const kw = search.value.trim().toLowerCase();
+            document.querySelectorAll('.song-item').forEach((el, i) => {
+                el.hidden = !songs[i].name.toLowerCase().includes(kw);
+            });
+        };
+
+        // 加载歌曲
+        async function loadSongs() {
+            if (isLoadingSongs) return;
+            isLoadingSongs = true;
+
+            list.innerHTML = '<div class="text-gray-400 text-center py-4">加载歌曲列表...</div>';
+            status.textContent = "加载中...";
+
+            try {
+                const res = await fetch('/api/songs');
+                if (!res.ok) throw new Error("接口异常");
+                songs = await res.json();
+                renderList();
+                status.textContent = `✅ 已加载 ${songs.length} 首歌曲`;
+                document.querySelectorAll('button').forEach(b => b.disabled = false);
+            } catch (e) {
+                status.textContent = '❌ 歌曲列表加载失败';
+                list.innerHTML = '<div class="text-red-400 text-center py-4">加载失败，请刷新重试</div>';
+            } finally {
+                isLoadingSongs = false;
+            }
+        }
+
+        // 渲染列表
+        function renderList() {
+            list.innerHTML = '';
+            if (songs.length === 0) {
+                list.innerHTML = '<div class="text-gray-400 text-center py-6">暂无歌曲</div>';
+                return;
+            }
+            songs.forEach((s, i) => {
+                const d = document.createElement('div');
+                d.className = 'song-item px-4 py-3 cursor-pointer rounded-xl border-b border-gray-700/50 hover:bg-gray-700/50 transition-all';
+                d.innerHTML = `<span class="text-gray-400 mr-2">${i + 1}.</span>${s.name}`;
+                d.onclick = () => play(i);
+                list.appendChild(d);
+            });
+        }
+
+        // 播放函数
+        function play(i) {
+            if (songs.length === 0) return;
+
+            idx = Math.max(0, Math.min(i, songs.length - 1));
+            const song = songs[idx];
+
+            p.pause();
+            p.src = song.path;
+
+            p.play().catch(err => {
+                status.textContent = `❌ 无法播放：${song.name}`;
+                setTimeout(next, 800);
+            });
+
+            document.querySelectorAll('.song-item').forEach((e, j) => {
+                e.classList.toggle('bg-green-500/20', j === idx);
+                e.classList.toggle('text-green-400', j === idx);
+            });
+
+            status.textContent = `▶️ 正在播放：${song.name}`;
+            localStorage.setItem('last', idx);
+        }
+
+        // 音频事件
+        p.onpause = () => {
+            status.textContent = `⏸️ 已暂停：${songs[idx]?.name || '未选择歌曲'}`;
+        };
+
+        p.onended = () => {
+            loopMode === 'single' ? (p.currentTime = 0, p.play()) : next();
+        };
+
+        // 切歌
+        function prev() {
+            if (songs.length === 0) return;
+            const newIdx = loopMode === 'random' ? Math.floor(Math.random() * songs.length) : (idx - 1 + songs.length) % songs.length;
+            play(newIdx);
+        }
+
+        function next() {
+            if (songs.length === 0) return;
+            const newIdx = loopMode === 'random' ? Math.floor(Math.random() * songs.length) : (idx + 1) % songs.length;
+            play(newIdx);
+        }
+
+        // 循环模式
+        function toggleLoop() {
+            if (loopMode === 'list') {
+                loopMode = 'single';
+                loopBtn.textContent = '🔂 单曲循环';
+            } else if (loopMode === 'single') {
+                loopMode = 'random';
+                loopBtn.textContent = '🔀 随机播放';
+            } else {
+                loopMode = 'list';
+                loopBtn.textContent = '🔁 列表循环';
+            }
+            p.loop = loopMode === 'single';
+        }
+
+        p.onerror = () => {
+            status.textContent = '❌ 播放失败，自动跳过下一曲';
+            setTimeout(next, 600);
+        };
+
+        p.onvolumechange = () => {
+            localStorage.setItem('volume', p.volume);
+        };
+    </script>
+</body>
+
+</html>
