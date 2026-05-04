@@ -10,7 +10,7 @@
 - 纯前端，无需安装任何依赖
 
 ## 🚀 快速启动
-1. 将 `play.html` 放在你的音乐文件夹根目录
+1. 将 `play.html` 和 `script.js` 放在你的音乐文件夹根目录
 2. 启动 Python 服务器：
 ```bash
 python server.py
