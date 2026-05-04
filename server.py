@@ -25,10 +25,6 @@ class MyHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
-    def log_message(self, format, *args):
-        # 不打印访问日志（更干净）
-        return
-
     def do_GET(self):
         if self.path == '/api/songs':
             songs = []
@@ -40,7 +36,6 @@ class MyHandler(BaseHTTPRequestHandler):
                         rel_path = os.path.relpath(full_path, BASE_DIR)
                         web_path = rel_path.replace('\\', '/')
                         songs.append({
-                            "name": f,
                             "path": web_path
                         })
 
