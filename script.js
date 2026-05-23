@@ -113,6 +113,8 @@ function play(i) {
     p.pause();
     p.src = path;
 
+    p.load(); // ✅ 关键修复！让进度条正常工作
+
     p.play().catch(err => {
         status.textContent = `❌ 无法播放：${path}`;
         setTimeout(next, 800);
