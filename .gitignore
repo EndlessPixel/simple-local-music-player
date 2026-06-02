@@ -9,9 +9,6 @@ Thumbs.db
 logs/
 log/
 
-# 旧版存档（可选，不提交 old 目录）
-old/
-
 # 音乐本身（不把歌曲提交到 git！）
 *.mp3
 *.flac
