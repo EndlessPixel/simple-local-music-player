@@ -12,7 +12,7 @@
 
 ## 🚀 快速启动
 1. 确保已安装 Node.js 环境
-2. 下载 `server.js` `script.js` `play.html` 文件到你的音乐根目录
+2. 下载 `server.js` `script.js` `play.html` `package.json` 文件到你的音乐根目录
 3. 运行：
 ```bash
 node server.js
