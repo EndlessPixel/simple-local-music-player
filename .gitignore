@@ -1,0 +1,35 @@
+# 系统垃圾文件
+Thumbs.db
+.DS_Store
+*.tmp
+*.temp
+
+# 日志/缓存
+*.log
+logs/
+log/
+
+# 旧版存档（可选，不提交 old 目录）
+old/
+
+# 音乐本身（不把歌曲提交到 git！）
+*.mp3
+*.flac
+*.wav
+*.m4a
+*.aac
+*.ogg
+*.wma
+*.mp4
+*.mkv
+
+# Node 依赖（你没有，但预防）
+node_modules/
+package-lock.json
+yarn.lock
+
+# 编辑器配置
+.idea/
+.vscode/
+*.swp
+*.swo
