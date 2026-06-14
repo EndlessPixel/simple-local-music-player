@@ -1,1 +1,91 @@
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport"content="width=device-width,initial-scale=1.0"><title>音乐播放器</title><script src="https://cdn.tailwindcss.com"></script><style>#list::-webkit-scrollbar{width:10px}#list::-webkit-scrollbar-track{background:#1f1f1f}#list::-webkit-scrollbar-thumb{background:#10b981}</style></head><body class="bg-gray-900 text-white min-h-screen flex flex-col items-center p-4"><div class="w-full max-w-3xl mb-4"><input id="search"placeholder="搜索歌曲名称"class="w-full px-4 py-2 rounded-full bg-gray-800 text-white  border-gray-700 outline-none"></div><div class="flex gap-2 flex-wrap justify-center mb-4"><button onclick="loadSongs()"class="px-5 py-2 bg-green-500 rounded-full">刷新列表</button><button id="prev"disabled onclick="prev()"class="px-5 py-2 bg-emerald-500 rounded-full disabled:bg-gray-700">上一曲</button><button id="next"disabled onclick="next()"class="px-5 py-2 bg-emerald-500 rounded-full disabled:bg-gray-700">下一曲</button><button id="loop"disabled onclick="toggleLoop()"class="px-5 py-2 bg-cyan-500 rounded-full disabled:bg-gray-700">列表循环</button></div><div id="status"class="text-green-400 text-center mb-3">加载中...</div><div id="list"class="w-full max-w-5xl max-h-[60vh] overflow-y-auto bg-gray-800  border-gray-700 rounded-xl p-3 mb-4"></div><audio id="player"class="w-full max-w-3xl"controls></audio><script src="script.js"></script></body></html>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>音乐播放器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 滚动条样式 */
+        #list::-webkit-scrollbar { width: 8px; }
+        #list::-webkit-scrollbar-track { background: #1f1f1f; border-radius: 10px; }
+        #list::-webkit-scrollbar-thumb { background: #10b981; border-radius: 10px; }
+        
+        /* 粒子画布覆盖层 - 不影响交互 */
+        #particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        /* 所有内容都在粒子之上，保证可点击 */
+        .content-layer {
+            position: relative;
+            z-index: 10;
+        }
+        
+        /* 歌曲项悬停效果 */
+        .song-item {
+            transition: all 0.2s ease;
+        }
+        .song-item:hover {
+            background: rgba(16, 185, 129, 0.15);
+            transform: translateX(4px);
+        }
+        
+        /* 播放器进度条样式增强 */
+        audio::-webkit-media-controls-timeline {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center p-4 relative">
+
+    <!-- 粒子特效 Canvas（背景层） -->
+    <canvas id="particle-canvas"></canvas>
+
+    <!-- 内容层：所有UI都在粒子之上 -->
+    <div class="content-layer w-full max-w-4xl">
+
+        <!-- 标题区 -->
+        <div class="text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
+                🎵 音乐播放器
+            </h1>
+        </div>
+
+        <!-- 搜索框 -->
+        <div class="w-full mb-4">
+            <input id="search" placeholder="🔍 搜索歌曲名称或序号" class="w-full px-5 py-3 rounded-full bg-gray-800/80 backdrop-blur-sm text-white border border-gray-700 focus:border-green-500 outline-none transition-all">
+        </div>
+
+        <!-- 控制按钮组 -->
+        <div class="flex gap-2 flex-wrap justify-center mb-4">
+            <button onclick="loadSongs()" class="px-5 py-2 bg-green-600 hover:bg-green-500 rounded-full transition-all shadow-lg">🔄 刷新列表</button>
+            <button id="prev" disabled onclick="prev()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-all">⏮ 上一曲</button>
+            <button id="next" disabled onclick="next()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-all">⏭ 下一曲</button>
+            <button id="loop" disabled onclick="toggleLoop()" class="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-all">🔁 列表循环</button>
+        </div>
+
+        <!-- 状态栏 -->
+        <div id="status" class="text-green-400 text-center mb-3 text-sm bg-gray-800/50 py-2 rounded-full backdrop-blur-sm">🎧 加载中...</div>
+
+        <!-- 歌曲列表 -->
+        <div id="list" class="w-full max-h-[50vh] overflow-y-auto bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-xl p-2 mb-4 shadow-xl"></div>
+
+        <!-- 音频播放器 -->
+        <audio id="player" class="w-full rounded-lg shadow-lg" controls></audio>
+
+        <!-- 提示信息 -->
+        <div class="text-center text-gray-500 text-xs mt-4">
+            ⌨️ 快捷键：空格 播放/暂停 | ← 上一曲 | → 下一曲
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
