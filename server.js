@@ -42,6 +42,7 @@ function getSongMap(){
 
 const safePath = (p) => {
     if (!p || p === 'play.html') return join(__dirname, 'play.html');
+    if (p === 'favicon.svg') return join(__dirname, 'favicon.svg');
     const full = resolve(MUSIC_DIR, decodeURIComponent(p));
     return full.startsWith(MUSIC_DIR) ? full : null;
 };
@@ -70,7 +71,8 @@ const getMime = (f) => {
         '.wma':'audio/x-ms-wma',
         '.html':'text/html;charset=utf-8',
         '.js':'application/javascript;charset=utf-8',
-        '.css':'text/css;charset=utf-8'
+        '.css':'text/css;charset=utf-8',
+        '.svg':'image/svg+xml'
     };
     return map[ext] || 'application/octet-stream';
 };
