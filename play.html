@@ -214,48 +214,6 @@
             font-weight: 500;
         }
 
-        .folder-bar {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            padding: 0 20px 12px;
-        }
-
-        .folder-tag {
-            padding: 6px 12px;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            font-size: 12px;
-            color: var(--text-muted);
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .folder-tag:hover {
-            background: rgba(255, 255, 255, 0.15);
-            color: var(--text);
-        }
-
-        .folder-tag.active {
-            background: var(--primary);
-            border-color: var(--primary);
-            color: #fff;
-        }
-
-        .folder-tag svg {
-            width: 10px;
-            height: 10px;
-            transition: transform 0.2s ease;
-        }
-
-        .folder-tag.collapsed svg {
-            transform: rotate(-90deg);
-        }
-
         .song-list {
             flex: 1;
             overflow-y: auto;
@@ -876,7 +834,6 @@
             </div>
             <div class="song-list-container">
                 <div class="song-count" id="songCount">加载中...</div>
-                <div class="folder-bar" id="folderBar"></div>
                 <div class="song-list" id="songList">
                     <div class="loading-container">
                         <div class="spinner"></div>
@@ -1035,7 +992,6 @@
         const currentPathEl = document.getElementById('currentPath');
         const albumArt = document.getElementById('albumArt');
         const volumeSlider = document.getElementById('volumeSlider');
-        const folderBar = document.getElementById('folderBar');
 
         // 初始化
         async function init() {
@@ -1079,7 +1035,6 @@
         // 渲染歌曲列表
         function renderSongList(songs, filter = '') {
             songList.innerHTML = '';
-            folderBar.innerHTML = '';
             state.flatSongs = [];
             let totalSongs = 0;
 
@@ -1087,44 +1042,6 @@
                 if (a === '.') return -1;
                 if (b === '.') return 1;
                 return a.localeCompare(b);
-            });
-
-            // 渲染文件夹标签栏
-            folders.forEach(folder => {
-                if (songs[folder].length === 0) return;
-                
-                const tag = document.createElement('button');
-                tag.className = 'folder-tag' + (state.collapsedFolders.has(folder) ? ' collapsed' : '');
-                tag.dataset.folder = folder;
-                tag.innerHTML = `
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                    ${folder === '.' ? '根目录' : folder}
-                    <span style="opacity: 0.6;">${songs[folder].length}</span>
-                `;
-                tag.addEventListener('click', () => {
-                    const folderName = tag.dataset.folder;
-                    if (state.collapsedFolders.has(folderName)) {
-                        state.collapsedFolders.delete(folderName);
-                    } else {
-                        state.collapsedFolders.add(folderName);
-                    }
-                    localStorage.setItem('collapsedFolders', JSON.stringify([...state.collapsedFolders]));
-                    tag.classList.toggle('collapsed');
-                    
-                    // 更新列表中的对应文件夹
-                    const folderGroups = document.querySelectorAll('.folder-group');
-                    folderGroups.forEach(group => {
-                        const groupFolder = group.querySelector('.folder-header').dataset.folder;
-                        if (groupFolder === folderName) {
-                            const songsContainer = group.querySelector('.folder-songs');
-                            group.classList.toggle('collapsed');
-                            songsContainer.classList.toggle('collapsed');
-                        }
-                    });
-                });
-                folderBar.appendChild(tag);
             });
 
             for (const folder of folders) {
@@ -1326,7 +1243,8 @@
             }
 
             currentTitleEl.textContent = song.replace(/\.[^.]+$/, '');
-            currentPathEl.textContent = folder === '.' ? '根目录' : folder;
+            const pathDisplay = folder === '.' ? song : `${folder}/${song}`;
+            currentPathEl.textContent = pathDisplay;
             albumArt.classList.add('playing');
         }
 
