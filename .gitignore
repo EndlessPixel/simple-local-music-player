@@ -10,6 +10,7 @@ logs/
 log/
 
 # 音乐本身（不把歌曲提交到 git！）
+music/
 *.mp3
 *.flac
 *.wav
@@ -20,10 +21,8 @@ log/
 *.mp4
 *.mkv
 
-# Node 依赖（你没有，但预防）
+# Node 依赖
 node_modules/
-package-lock.json
-yarn.lock
 
 # 编辑器配置
 .idea/
