@@ -130,7 +130,7 @@
 
         .search-input {
             width: 100%;
-            padding: 14px 16px 14px 48px;
+            padding: 14px 44px 14px 48px;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid var(--border);
             border-radius: 14px;
@@ -143,6 +143,42 @@
 
         .search-input::placeholder {
             color: var(--text-muted);
+        }
+
+        .refresh-btn {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 28px;
+            height: 28px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .refresh-btn:hover {
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .refresh-btn:active {
+            transform: translateY(-50%) scale(0.9);
+        }
+
+        .refresh-btn.loading svg {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
 
         .search-input:focus {
@@ -178,6 +214,48 @@
             font-weight: 500;
         }
 
+        .folder-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 0 20px 12px;
+        }
+
+        .folder-tag {
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 12px;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .folder-tag:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: var(--text);
+        }
+
+        .folder-tag.active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #fff;
+        }
+
+        .folder-tag svg {
+            width: 10px;
+            height: 10px;
+            transition: transform 0.2s ease;
+        }
+
+        .folder-tag.collapsed svg {
+            transform: rotate(-90deg);
+        }
+
         .song-list {
             flex: 1;
             overflow-y: auto;
@@ -204,7 +282,7 @@
         .folder-header {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
             padding: 12px 16px;
             font-size: 11px;
             font-weight: 600;
@@ -215,6 +293,28 @@
             cursor: pointer;
             transition: all 0.2s ease;
             user-select: none;
+        }
+
+        .folder-toggle {
+            transition: transform 0.2s ease;
+        }
+
+        .folder-header:hover .folder-toggle {
+            color: var(--text);
+        }
+
+        .folder-group.collapsed .folder-toggle {
+            transform: rotate(-90deg);
+        }
+
+        .folder-songs {
+            display: block;
+            padding-left: 24px;
+            transition: all 0.3s ease;
+        }
+
+        .folder-songs.collapsed {
+            display: none;
         }
 
         .folder-header:hover {
@@ -425,6 +525,15 @@
             color: var(--text-muted);
             font-weight: 400;
             min-height: 24px;
+        }
+
+        .current-path {
+            font-size: 12px;
+            color: var(--text-muted);
+            opacity: 0.6;
+            font-weight: 400;
+            min-height: 18px;
+            margin-top: 4px;
         }
 
         /* 播放器控制 */
@@ -755,10 +864,19 @@
                         </svg>
                     </span>
                     <input type="text" class="search-input" id="searchInput" placeholder="搜索音乐...">
+                    <button class="refresh-btn" id="refreshBtn" title="刷新列表">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                            <path d="M3 3v5h5"/>
+                            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                            <path d="M16 21h5v-5"/>
+                        </svg>
+                    </button>
                 </div>
             </div>
             <div class="song-list-container">
                 <div class="song-count" id="songCount">加载中...</div>
+                <div class="folder-bar" id="folderBar"></div>
                 <div class="song-list" id="songList">
                     <div class="loading-container">
                         <div class="spinner"></div>
@@ -785,6 +903,7 @@
                     <div class="song-info-display">
                         <h1 class="current-title" id="currentTitle">未选择歌曲</h1>
                         <p class="current-artist" id="currentArtist"></p>
+                        <p class="current-path" id="currentPath"></p>
                     </div>
                 </div>
             </div>
@@ -891,7 +1010,8 @@
             currentIndex: -1,
             isPlaying: false,
             isShuffle: false,
-            repeatMode: 0
+            repeatMode: 0,
+            collapsedFolders: new Set()
         };
 
         // DOM 元素
@@ -899,6 +1019,7 @@
         const songList = document.getElementById('songList');
         const songCount = document.getElementById('songCount');
         const searchInput = document.getElementById('searchInput');
+        const refreshBtn = document.getElementById('refreshBtn');
         const playBtn = document.getElementById('playBtn');
         const prevBtn = document.getElementById('prevBtn');
         const nextBtn = document.getElementById('nextBtn');
@@ -911,16 +1032,31 @@
         const totalTimeEl = document.getElementById('totalTime');
         const currentTitleEl = document.getElementById('currentTitle');
         const currentArtistEl = document.getElementById('currentArtist');
+        const currentPathEl = document.getElementById('currentPath');
         const albumArt = document.getElementById('albumArt');
         const volumeSlider = document.getElementById('volumeSlider');
+        const folderBar = document.getElementById('folderBar');
 
         // 初始化
         async function init() {
             try {
+                // 恢复折叠状态
+                const savedCollapsed = localStorage.getItem('collapsedFolders');
+                if (savedCollapsed) {
+                    try {
+                        state.collapsedFolders = new Set(JSON.parse(savedCollapsed));
+                    } catch {
+                        state.collapsedFolders = new Set();
+                    }
+                }
+                
                 const res = await fetch('/api/songs');
                 state.songs = await res.json();
                 renderSongList(state.songs);
-                const volume = parseInt(volumeSlider.value);
+                
+                const savedVolume = localStorage.getItem('musicVolume');
+                const volume = savedVolume ? parseInt(savedVolume) : 80;
+                volumeSlider.value = volume;
                 audio.volume = volume / 100;
                 updateVolumeIcon(volume);
             } catch (err) {
@@ -943,6 +1079,7 @@
         // 渲染歌曲列表
         function renderSongList(songs, filter = '') {
             songList.innerHTML = '';
+            folderBar.innerHTML = '';
             state.flatSongs = [];
             let totalSongs = 0;
 
@@ -952,6 +1089,44 @@
                 return a.localeCompare(b);
             });
 
+            // 渲染文件夹标签栏
+            folders.forEach(folder => {
+                if (songs[folder].length === 0) return;
+                
+                const tag = document.createElement('button');
+                tag.className = 'folder-tag' + (state.collapsedFolders.has(folder) ? ' collapsed' : '');
+                tag.dataset.folder = folder;
+                tag.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                    ${folder === '.' ? '根目录' : folder}
+                    <span style="opacity: 0.6;">${songs[folder].length}</span>
+                `;
+                tag.addEventListener('click', () => {
+                    const folderName = tag.dataset.folder;
+                    if (state.collapsedFolders.has(folderName)) {
+                        state.collapsedFolders.delete(folderName);
+                    } else {
+                        state.collapsedFolders.add(folderName);
+                    }
+                    localStorage.setItem('collapsedFolders', JSON.stringify([...state.collapsedFolders]));
+                    tag.classList.toggle('collapsed');
+                    
+                    // 更新列表中的对应文件夹
+                    const folderGroups = document.querySelectorAll('.folder-group');
+                    folderGroups.forEach(group => {
+                        const groupFolder = group.querySelector('.folder-header').dataset.folder;
+                        if (groupFolder === folderName) {
+                            const songsContainer = group.querySelector('.folder-songs');
+                            group.classList.toggle('collapsed');
+                            songsContainer.classList.toggle('collapsed');
+                        }
+                    });
+                });
+                folderBar.appendChild(tag);
+            });
+
             for (const folder of folders) {
                 const songsInFolder = songs[folder].filter(name =>
                     filter === '' || name.toLowerCase().includes(filter.toLowerCase())
@@ -959,12 +1134,19 @@
 
                 if (songsInFolder.length === 0) continue;
 
+                const isCollapsed = state.collapsedFolders.has(folder);
                 const group = document.createElement('div');
-                group.className = 'folder-group';
+                group.className = 'folder-group' + (isCollapsed ? ' collapsed' : '');
 
                 const header = document.createElement('div');
                 header.className = 'folder-header';
+                header.dataset.folder = folder;
                 header.innerHTML = `
+                    <span class="folder-toggle">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                    </span>
                     <span class="folder-icon">
                         ${folder === '.' ? 
                             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' :
@@ -975,6 +1157,9 @@
                     <span style="margin-left: auto; opacity: 0.5;">${songsInFolder.length}</span>
                 `;
                 group.appendChild(header);
+
+                const songsContainer = document.createElement('div');
+                songsContainer.className = 'folder-songs' + (isCollapsed ? ' collapsed' : '');
 
                 const sortedSongs = [...songsInFolder].sort();
                 for (const song of sortedSongs) {
@@ -1008,11 +1193,25 @@
                     item.appendChild(info);
 
                     item.addEventListener('click', () => playSong(parseInt(item.dataset.index)));
-                    group.appendChild(item);
+                    songsContainer.appendChild(item);
 
                     state.flatSongs.push({ folder, song });
                     totalSongs++;
                 }
+
+                group.appendChild(songsContainer);
+
+                header.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (state.collapsedFolders.has(folder)) {
+                        state.collapsedFolders.delete(folder);
+                    } else {
+                        state.collapsedFolders.add(folder);
+                    }
+                    localStorage.setItem('collapsedFolders', JSON.stringify([...state.collapsedFolders]));
+                    group.classList.toggle('collapsed');
+                    songsContainer.classList.toggle('collapsed');
+                });
 
                 songList.appendChild(group);
             }
@@ -1127,6 +1326,7 @@
             }
 
             currentTitleEl.textContent = song.replace(/\.[^.]+$/, '');
+            currentPathEl.textContent = folder === '.' ? '根目录' : folder;
             albumArt.classList.add('playing');
         }
 
@@ -1247,10 +1447,24 @@
             const volume = parseInt(volumeSlider.value);
             audio.volume = volume / 100;
             updateVolumeIcon(volume);
+            localStorage.setItem('musicVolume', volume.toString());
         });
 
         searchInput.addEventListener('input', (e) => {
             renderSongList(state.songs, e.target.value);
+        });
+
+        refreshBtn.addEventListener('click', async () => {
+            refreshBtn.classList.add('loading');
+            try {
+                const res = await fetch('/api/songs');
+                state.songs = await res.json();
+                renderSongList(state.songs, searchInput.value);
+            } catch (err) {
+                console.error('刷新失败:', err);
+            } finally {
+                refreshBtn.classList.remove('loading');
+            }
         });
 
         audio.addEventListener('timeupdate', () => {
