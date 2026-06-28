@@ -212,6 +212,16 @@
             text-transform: uppercase;
             letter-spacing: 0.1em;
             font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .song-count .auto-refresh {
+            font-size: 11px;
+            opacity: 0.7;
+            text-transform: none;
+            letter-spacing: normal;
         }
 
         .song-list {
@@ -968,7 +978,9 @@
             isPlaying: false,
             isShuffle: false,
             repeatMode: 0,
-            collapsedFolders: new Set()
+            collapsedFolders: new Set(),
+            refreshCountdown: 30,
+            refreshInterval: null
         };
 
         // DOM 元素
@@ -1009,6 +1021,7 @@
                 const res = await fetch('/api/songs');
                 state.songs = await res.json();
                 renderSongList(state.songs);
+                startAutoRefresh();
                 
                 const savedVolume = localStorage.getItem('musicVolume');
                 const volume = savedVolume ? parseInt(savedVolume) : 80;
@@ -1034,6 +1047,14 @@
 
         // 渲染歌曲列表
         function renderSongList(songs, filter = '') {
+            const currentScroll = songList.scrollTop;
+            
+            let currentSong = null;
+            if (state.currentIndex >= 0 && state.flatSongs[state.currentIndex]) {
+                const s = state.flatSongs[state.currentIndex];
+                currentSong = { folder: s.folder, song: s.song };
+            }
+            
             songList.innerHTML = '';
             state.flatSongs = [];
             let totalSongs = 0;
@@ -1083,6 +1104,8 @@
                     const item = document.createElement('div');
                     item.className = 'song-item';
                     item.dataset.index = state.flatSongs.length;
+                    item.dataset.folder = folder;
+                    item.dataset.song = song;
 
                     const num = document.createElement('span');
                     num.className = 'song-num';
@@ -1133,7 +1156,10 @@
                 songList.appendChild(group);
             }
 
-            songCount.textContent = `共 ${totalSongs} 首歌曲`;
+            songCount.innerHTML = `
+                <span>共 ${totalSongs} 首歌曲</span>
+                <span class="auto-refresh" id="autoRefresh">自动刷新: ${state.refreshCountdown}s</span>
+            `;
 
             if (totalSongs === 0) {
                 songList.innerHTML = `
@@ -1148,6 +1174,63 @@
                         <div class="empty-text">${filter ? '没有找到匹配的歌曲' : '将音乐文件放入 music 文件夹'}</div>
                     </div>
                 `;
+            }
+
+            songList.scrollTop = currentScroll;
+            updateActiveItem(currentSong);
+        }
+
+        // 更新当前播放项高亮
+        function updateActiveItem(currentSong) {
+            if (!currentSong || state.flatSongs.length === 0) return;
+            
+            let newIndex = -1;
+            for (let i = 0; i < state.flatSongs.length; i++) {
+                if (state.flatSongs[i].folder === currentSong.folder && 
+                    state.flatSongs[i].song === currentSong.song) {
+                    newIndex = i;
+                    break;
+                }
+            }
+            
+            if (newIndex === -1) return;
+            
+            state.currentIndex = newIndex;
+            
+            document.querySelectorAll('.song-item').forEach(el => el.classList.remove('active'));
+            
+            const allItems = document.querySelectorAll('.song-item');
+            for (const item of allItems) {
+                if (item.dataset.folder === currentSong.folder && item.dataset.song === currentSong.song) {
+                    item.classList.add('active');
+                    break;
+                }
+            }
+        }
+
+        // 自动刷新
+        function startAutoRefresh() {
+            if (state.refreshInterval) return;
+            state.refreshInterval = setInterval(() => {
+                state.refreshCountdown--;
+                const autoRefreshEl = document.getElementById('autoRefresh');
+                if (autoRefreshEl) {
+                    autoRefreshEl.textContent = `自动刷新: ${state.refreshCountdown}s`;
+                }
+                if (state.refreshCountdown <= 0) {
+                    state.refreshCountdown = 30;
+                    refreshSongList();
+                }
+            }, 1000);
+        }
+
+        async function refreshSongList() {
+            try {
+                const res = await fetch('/api/songs');
+                state.songs = await res.json();
+                renderSongList(state.songs, searchInput.value);
+            } catch (err) {
+                console.error('刷新失败:', err);
             }
         }
 
@@ -1235,12 +1318,7 @@
             loadCover(folder, song);
             loadMeta(folder, song);
 
-            document.querySelectorAll('.song-item').forEach(el => el.classList.remove('active'));
-            const activeItem = document.querySelector(`.song-item[data-index="${index}"]`);
-            if (activeItem) {
-                activeItem.classList.add('active');
-                activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
+            updateActiveItem({ folder, song });
 
             currentTitleEl.textContent = song.replace(/\.[^.]+$/, '');
             const pathDisplay = folder === '.' ? song : `${folder}/${song}`;
@@ -1375,9 +1453,8 @@
         refreshBtn.addEventListener('click', async () => {
             refreshBtn.classList.add('loading');
             try {
-                const res = await fetch('/api/songs');
-                state.songs = await res.json();
-                renderSongList(state.songs, searchInput.value);
+                await refreshSongList();
+                state.refreshCountdown = 30;
             } catch (err) {
                 console.error('刷新失败:', err);
             } finally {
