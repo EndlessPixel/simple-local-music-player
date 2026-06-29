@@ -46,20 +46,6 @@ function pruneCache(cache, sizeVar, maxSize, maxEntries) {
     return sizeVar;
 }
 
-function addToCoverCache(key, data) {
-    const size = data ? data.length : 0;
-    coverCache.set(key, { data, lastUsed: Date.now(), size });
-    coverCacheSize += size;
-    coverCacheSize = pruneCache(coverCache, coverCacheSize, COVER_MAX_SIZE, COVER_MAX_ENTRIES);
-}
-
-function addToMetaCache(key, data) {
-    const size = data ? JSON.stringify(data).length : 0;
-    metaCache.set(key, { data, lastUsed: Date.now(), size });
-    metaCacheSize += size;
-    metaCacheSize = pruneCache(metaCache, metaCacheSize, META_MAX_SIZE, META_MAX_ENTRIES);
-}
-
 // ---------- 目录扫描 ----------
 async function scanDir(dir, relPath, map) {
     try {
@@ -106,9 +92,9 @@ async function getSongMap() {
 }
 
 // ---------- 路径安全 ----------
-function isSafePathComponent(part) {
+function isSafePathPart(part) {
     // 禁止 .. 和路径分隔符
-    return !part.includes('..') && !part.includes(sep) && !part.includes('/') && !part.includes('\\');
+    return part && !part.includes('..') && !part.includes('/') && !part.includes('\\');
 }
 
 function safeStaticPath(reqPath) {
@@ -120,15 +106,54 @@ function safeStaticPath(reqPath) {
 }
 
 function safeMusicPath(folder, song) {
-    // 对 folder 和 song 进行基本安全检查
-    if (folder && !isSafePathComponent(folder)) return null;
-    if (song && !isSafePathComponent(song)) return null;
+    // 对 song 进行安全检查
+    if (!song) {
+        console.log('safeMusicPath: song is empty');
+        return null;
+    }
 
-    const decodedFolder = folder ? decodeURIComponent(folder) : '';
+    // 先解码
     const decodedSong = decodeURIComponent(song);
+    
+    // 检查解码后的 song 是否包含路径遍历
+    if (decodedSong.includes('..')) {
+        console.log('safeMusicPath: song contains ..');
+        console.log('  Original song:', song);
+        console.log('  Decoded song:', decodedSong);
+        return null;
+    }
+
+    // 验证 folder 的每个部分
+    let decodedFolder = '';
+    if (folder) {
+        decodedFolder = decodeURIComponent(folder);
+        const parts = decodedFolder.split('/');
+        for (const part of parts) {
+            if (!isSafePathPart(part)) {
+                console.log('safeMusicPath: invalid folder part:', part);
+                return null;
+            }
+        }
+    }
+
     const filePath = decodedFolder ? join(MUSIC_DIR, decodedFolder, decodedSong) : join(MUSIC_DIR, decodedSong);
     const resolved = resolve(filePath);
-    if (!resolved.startsWith(MUSIC_DIR)) return null;
+    
+    console.log('safeMusicPath check:', {
+        folder,
+        song,
+        decodedFolder,
+        decodedSong,
+        filePath,
+        resolved,
+        musicDir: MUSIC_DIR,
+        startsWith: resolved.startsWith(MUSIC_DIR)
+    });
+    
+    if (!resolved.startsWith(MUSIC_DIR)) {
+        console.log('safeMusicPath: path not in MUSIC_DIR');
+        return null;
+    }
     return resolved;
 }
 
@@ -166,7 +191,7 @@ function parseRange(range, size) {
 }
 
 // ---------- 发送文件（支持 Range、HEAD、流错误处理） ----------
-function sendFile(res, filePath, rangeHeader, method) {
+function sendFile(res, filePath, rangeHeader, method, req) {
     try {
         const st = statSync(filePath);
         if (!st.isFile()) throw new Error('Not a file');
@@ -247,7 +272,9 @@ function sendFile(res, filePath, rangeHeader, method) {
         req.on('close', () => stream.destroy());
         stream.pipe(res);
     } catch (err) {
-        res.writeHead(500).end('Internal Server Error');
+        if (!res.headersSent) {
+            res.writeHead(500).end('Internal Server Error');
+        }
     }
 }
 
@@ -256,7 +283,7 @@ async function getCoverFromFile(filePath) {
     if (coverCache.has(filePath)) {
         const entry = coverCache.get(filePath);
         entry.lastUsed = Date.now();
-        return entry.data; // 可能为 null
+        return entry.data ? { data: entry.data, mime: entry.mime } : null;
     }
 
     try {
@@ -265,16 +292,17 @@ async function getCoverFromFile(filePath) {
             const pic = metadata.common.picture[0];
             const data = pic.data;
             const mime = pic.format || 'image/jpeg';
-            const result = { data, mime };
-            addToCoverCache(filePath, result);
-            return result;
+            coverCache.set(filePath, { data, mime, lastUsed: Date.now(), size: data.length });
+            coverCacheSize += data.length;
+            coverCacheSize = pruneCache(coverCache, coverCacheSize, COVER_MAX_SIZE, COVER_MAX_ENTRIES);
+            return { data, mime };
         }
         // 没有封面，缓存 null
-        addToCoverCache(filePath, null);
+        coverCache.set(filePath, { data: null, mime: null, lastUsed: Date.now(), size: 0 });
         return null;
     } catch (err) {
         // 解析失败，缓存 null
-        addToCoverCache(filePath, null);
+        coverCache.set(filePath, { data: null, mime: null, lastUsed: Date.now(), size: 0 });
         return null;
     }
 }
@@ -293,12 +321,17 @@ async function getMetaFromFile(filePath) {
             title: metadata.common.title || null,
             duration: metadata.format.duration || null
         };
-        addToMetaCache(filePath, data);
+        const size = JSON.stringify(data).length;
+        metaCache.set(filePath, { data, lastUsed: Date.now(), size });
+        metaCacheSize += size;
+        metaCacheSize = pruneCache(metaCache, metaCacheSize, META_MAX_SIZE, META_MAX_ENTRIES);
         return data;
     } catch (err) {
-        // 解析失败，缓存空对象
         const empty = { artist: null, title: null, duration: null };
-        addToMetaCache(filePath, empty);
+        const size = JSON.stringify(empty).length;
+        metaCache.set(filePath, { data: empty, lastUsed: Date.now(), size });
+        metaCacheSize += size;
+        metaCacheSize = pruneCache(metaCache, metaCacheSize, META_MAX_SIZE, META_MAX_ENTRIES);
         return empty;
     }
 }
@@ -392,6 +425,21 @@ const server = createServer(async (req, res) => {
             return;
         }
 
+        // ---------- 音乐文件 ----------
+        const ext = extname(pathname).toLowerCase();
+        if (AUDIO_EXTS.has(ext)) {
+            const parts = pathname.slice(1).split('/');
+            const song = parts.pop();
+            const folder = parts.length > 0 ? parts.join('/') : '';
+            const filePath = safeMusicPath(folder, song);
+            if (!filePath) {
+                res.writeHead(403).end('Forbidden');
+                return;
+            }
+            sendFile(res, filePath, req.headers.range, req.method, req);
+            return;
+        }
+
         // ---------- 静态文件 ----------
         let staticPath = null;
         if (pathname === '/') {
@@ -406,7 +454,7 @@ const server = createServer(async (req, res) => {
             return;
         }
 
-        sendFile(res, staticPath, req.headers.range, req.method);
+        sendFile(res, staticPath, req.headers.range, req.method, req);
     } catch (err) {
         console.error('Unhandled error:', err);
         if (!res.headersSent) {
