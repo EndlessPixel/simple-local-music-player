@@ -265,7 +265,7 @@ async function loadCover(folder, song) {
     } catch {
     }
 
-    albumArt.innerHTML = '<ion-icon name="musical-notes" size="large"></ion-icon>';
+    albumArt.innerHTML = '<ion-icon name="musical-notes"></ion-icon>';
 }
 
 // 加载元数据（歌手、时长）
