@@ -1079,6 +1079,10 @@ body {
         font-size: 80px;
     }
 
+    .album-art ion-icon {
+        font-size: 80px;
+    }
+
     .side-controls {
         display: none;
     }
