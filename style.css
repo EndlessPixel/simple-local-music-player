@@ -816,6 +816,7 @@ body {
     display: flex;
     align-items: center;
     gap: 6px;
+    position: relative;
 }
 
 .speed-btn:hover {
@@ -832,7 +833,8 @@ body {
 .speed-menu {
     position: absolute;
     bottom: calc(100% + 8px);
-    right: 0;
+    left: 50%;
+    transform: translateX(-50%);
     background: rgba(30, 30, 50, 0.98);
     border: 1px solid var(--border);
     border-radius: 12px;
