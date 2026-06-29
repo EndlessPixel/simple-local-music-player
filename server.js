@@ -15,6 +15,27 @@ let songMapCache = {};
 let lastCacheMinute = -1;
 
 const coverCache = new Map();
+const metaCache = new Map();
+const COVER_CACHE_MAX = 50;
+const META_CACHE_MAX = 100;
+
+function pruneCache(cache, maxSize) {
+    while (cache.size > maxSize) {
+        let oldestKey = null;
+        let oldestTime = Infinity;
+        for (const [key, entry] of cache) {
+            if (entry.lastUsed < oldestTime) {
+                oldestTime = entry.lastUsed;
+                oldestKey = key;
+            }
+        }
+        if (oldestKey !== null) {
+            cache.delete(oldestKey);
+        } else {
+            break;
+        }
+    }
+}
 
 function getSongMap(){
     const now = new Date();
@@ -104,24 +125,25 @@ function sendFile(res, path, range) {
     createReadStream(path, { start: r.start, end: r.end }).pipe(res);
 }
 
-const metaCache = new Map();
-
 async function getCoverFromFile(filePath) {
     const cacheKey = filePath;
     if (coverCache.has(cacheKey)) {
-        return coverCache.get(cacheKey);
+        const entry = coverCache.get(cacheKey);
+        entry.lastUsed = Date.now();
+        return entry.data;
     }
     
     try {
         const metadata = await parseFile(filePath, { skipCovers: false });
         if (metadata.common.picture && metadata.common.picture.length > 0) {
             const picture = metadata.common.picture[0];
-            const result = {
+            const data = {
                 data: picture.data,
                 mime: picture.format || 'image/jpeg'
             };
-            coverCache.set(cacheKey, result);
-            return result;
+            coverCache.set(cacheKey, { data, lastUsed: Date.now() });
+            pruneCache(coverCache, COVER_CACHE_MAX);
+            return data;
         }
     } catch {
     }
@@ -130,18 +152,21 @@ async function getCoverFromFile(filePath) {
 
 async function getMetaFromFile(filePath) {
     if (metaCache.has(filePath)) {
-        return metaCache.get(filePath);
+        const entry = metaCache.get(filePath);
+        entry.lastUsed = Date.now();
+        return entry.data;
     }
     
     try {
-        const metadata = await parseFile(filePath, { skipCovers: false });
-        const result = {
+        const metadata = await parseFile(filePath, { skipCovers: true });
+        const data = {
             artist: metadata.common.artist || null,
             title: metadata.common.title || null,
             duration: metadata.format.duration || null
         };
-        metaCache.set(filePath, result);
-        return result;
+        metaCache.set(filePath, { data, lastUsed: Date.now() });
+        pruneCache(metaCache, META_CACHE_MAX);
+        return data;
     } catch {
         return { artist: null, title: null, duration: null };
     }

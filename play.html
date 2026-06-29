@@ -1131,8 +1131,6 @@
                     item.appendChild(num);
                     item.appendChild(playIcon);
                     item.appendChild(info);
-
-                    item.addEventListener('click', () => playSong(parseInt(item.dataset.index)));
                     songsContainer.appendChild(item);
 
                     state.flatSongs.push({ folder, song });
@@ -1140,19 +1138,6 @@
                 }
 
                 group.appendChild(songsContainer);
-
-                header.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    if (state.collapsedFolders.has(folder)) {
-                        state.collapsedFolders.delete(folder);
-                    } else {
-                        state.collapsedFolders.add(folder);
-                    }
-                    localStorage.setItem('collapsedFolders', JSON.stringify([...state.collapsedFolders]));
-                    group.classList.toggle('collapsed');
-                    songsContainer.classList.toggle('collapsed');
-                });
-
                 songList.appendChild(group);
             }
 
@@ -1494,7 +1479,7 @@
         });
 
         // 键盘快捷键
-        document.addEventListener('keydown', (e) => {
+        function handleKeydown(e) {
             if (e.target.tagName === 'INPUT') return;
 
             switch (e.code) {
@@ -1521,7 +1506,50 @@
                     updateVolumeIcon(parseInt(volumeSlider.value));
                     break;
             }
-        });
+        }
+        document.addEventListener('keydown', handleKeydown);
+
+        function handleSongListClick(e) {
+            const folderHeader = e.target.closest('.folder-header');
+            if (folderHeader) {
+                e.stopPropagation();
+                const folder = folderHeader.dataset.folder;
+                const group = folderHeader.parentElement;
+                const songsContainer = group.querySelector('.folder-songs');
+                
+                if (state.collapsedFolders.has(folder)) {
+                    state.collapsedFolders.delete(folder);
+                } else {
+                    state.collapsedFolders.add(folder);
+                }
+                localStorage.setItem('collapsedFolders', JSON.stringify([...state.collapsedFolders]));
+                group.classList.toggle('collapsed');
+                songsContainer.classList.toggle('collapsed');
+                return;
+            }
+
+            const songItem = e.target.closest('.song-item');
+            if (songItem) {
+                playSong(parseInt(songItem.dataset.index));
+            }
+        }
+
+        songList.addEventListener('click', handleSongListClick);
+
+        // 清理函数
+        function cleanup() {
+            if (state.refreshInterval) {
+                clearInterval(state.refreshInterval);
+                state.refreshInterval = null;
+            }
+            document.removeEventListener('keydown', handleKeydown);
+            songList.removeEventListener('click', handleSongListClick);
+            clearCoverUrl();
+            audio.pause();
+            audio.src = '';
+        }
+
+        window.addEventListener('beforeunload', cleanup);
 
         // 启动
         init();
