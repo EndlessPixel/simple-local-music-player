@@ -682,7 +682,21 @@ body {
     opacity: 0.6;
     font-weight: 400;
     min-height: 18px;
-    margin-top: 4px;
+}
+
+.visualizer-container {
+    margin-top: 24px;
+    display: flex;
+    justify-content: center;
+}
+
+#visualizer {
+    width: 100%;
+    max-width: 480px;
+    height: 60px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
 }
 
 /* 播放器控制 */
@@ -785,6 +799,69 @@ body {
 .control-btn.active {
     opacity: 1;
     color: var(--accent);
+}
+
+.speed-btn {
+    padding: 8px 12px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.speed-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: none;
+}
+
+.speed-label {
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 36px;
+}
+
+.speed-menu {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    right: 0;
+    background: rgba(30, 30, 50, 0.98);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 8px;
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 80px;
+    z-index: 100;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+.speed-menu.show {
+    display: flex;
+}
+
+.speed-menu button {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+}
+
+.speed-menu button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text);
+}
+
+.speed-menu button.active {
+    color: var(--accent);
+    background: rgba(244, 114, 182, 0.15);
 }
 
 .play-btn {

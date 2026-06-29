@@ -89,6 +89,9 @@
                         <p class="current-artist" id="currentArtist"></p>
                         <p class="current-path" id="currentPath"></p>
                     </div>
+                    <div class="visualizer-container">
+                        <canvas id="visualizer" width="400" height="60"></canvas>
+                    </div>
                 </div>
             </div>
 
@@ -105,15 +108,6 @@
                 </div>
                 <div style="position: relative;">
                     <div class="controls-wrapper">
-                        <button class="control-btn" id="shuffleBtn" title="随机播放">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M16 3h5v5"/>
-                                <path d="M4 20 21 3"/>
-                                <path d="M21 16v5h-5"/>
-                                <path d="M15 15 21 21"/>
-                                <path d="M4 4l5 5"/>
-                            </svg>
-                        </button>
                         <button class="control-btn" id="prevBtn" title="上一首">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <polygon points="19 20 9 12 19 4 19 20"/>
@@ -135,7 +129,7 @@
                                 <line x1="19" x2="19" y1="5" y2="19"/>
                             </svg>
                         </button>
-                        <button class="control-btn" id="repeatBtn" title="循环">
+                        <button class="control-btn" id="playModeBtn" title="播放模式">
                             <svg class="icon-repeat" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="m17 2 4 4-4 4"/>
                                 <path d="M3 11v-1a4 4 0 0 1 4-4h14"/>
@@ -149,7 +143,30 @@
                                 <path d="M21 13v1a4 4 0 0 1-4 4H3"/>
                                 <text x="12" y="14" font-size="8" font-weight="600" fill="currentColor" text-anchor="middle">1</text>
                             </svg>
+                            <svg class="icon-shuffle" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+                                <path d="M16 3h5v5"/>
+                                <path d="M4 20 21 3"/>
+                                <path d="M21 16v5h-5"/>
+                                <path d="M15 15 21 21"/>
+                                <path d="M4 4l5 5"/>
+                            </svg>
                         </button>
+                        <button class="control-btn speed-btn" id="speedBtn" title="播放速度">
+                            <span class="speed-label">1.0x</span>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                        </button>
+                        <div class="speed-menu" id="speedMenu">
+                            <button data-speed="0.25">0.25x</button>
+                            <button data-speed="0.5">0.5x</button>
+                            <button data-speed="0.75">0.75x</button>
+                            <button data-speed="1.0">1.0x</button>
+                            <button data-speed="1.25">1.25x</button>
+                            <button data-speed="1.5">1.5x</button>
+                            <button data-speed="1.75">1.75x</button>
+                            <button data-speed="2.0">2.0x</button>
+                        </div>
                         <button class="control-btn" id="downloadBtn" title="下载">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -217,8 +234,8 @@
         const playBtn = document.getElementById('playBtn');
         const prevBtn = document.getElementById('prevBtn');
         const nextBtn = document.getElementById('nextBtn');
-        const shuffleBtn = document.getElementById('shuffleBtn');
         const repeatBtn = document.getElementById('repeatBtn');
+        const playModeBtn = document.getElementById('playModeBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const progressBar = document.getElementById('progressBar');
         const progressFill = document.getElementById('progressFill');
@@ -229,6 +246,10 @@
         const currentPathEl = document.getElementById('currentPath');
         const albumArt = document.getElementById('albumArt');
         const volumeSlider = document.getElementById('volumeSlider');
+        const visualizerCanvas = document.getElementById('visualizer');
+        const speedBtn = document.getElementById('speedBtn');
+        const speedMenu = document.getElementById('speedMenu');
+        const speedLabel = speedBtn.querySelector('.speed-label');
 
         // 初始化
         async function init() {
@@ -597,12 +618,31 @@
             mute.style.display = volume === 0 ? 'block' : 'none';
         }
 
-        // 更新循环按钮图标
-        function updateRepeatButton() {
-            const iconRepeat = repeatBtn.querySelector('.icon-repeat');
-            const iconRepeatOne = repeatBtn.querySelector('.icon-repeat-one');
-            iconRepeat.style.display = state.repeatMode !== 2 ? 'block' : 'none';
-            iconRepeatOne.style.display = state.repeatMode === 2 ? 'block' : 'none';
+        // 更新播放模式按钮图标
+        function updatePlayModeButton() {
+            const iconRepeat = playModeBtn.querySelector('.icon-repeat');
+            const iconRepeatOne = playModeBtn.querySelector('.icon-repeat-one');
+            const iconShuffle = playModeBtn.querySelector('.icon-shuffle');
+            
+            if (state.isShuffle) {
+                iconRepeat.style.display = 'none';
+                iconRepeatOne.style.display = 'none';
+                iconShuffle.style.display = 'block';
+                playModeBtn.classList.add('active');
+                playModeBtn.title = '随机播放';
+            } else if (state.repeatMode === 1) {
+                iconRepeat.style.display = 'none';
+                iconRepeatOne.style.display = 'block';
+                iconShuffle.style.display = 'none';
+                playModeBtn.classList.add('active');
+                playModeBtn.title = '单曲循环';
+            } else {
+                iconRepeat.style.display = 'block';
+                iconRepeatOne.style.display = 'none';
+                iconShuffle.style.display = 'none';
+                playModeBtn.classList.remove('active');
+                playModeBtn.title = '列表循环';
+            }
         }
 
         // 格式化时间
@@ -663,15 +703,17 @@
             playSong(getNextIndex());
         });
 
-        shuffleBtn.addEventListener('click', () => {
-            state.isShuffle = !state.isShuffle;
-            shuffleBtn.classList.toggle('active', state.isShuffle);
-        });
-
-        repeatBtn.addEventListener('click', () => {
-            state.repeatMode = (state.repeatMode + 1) % 3;
-            repeatBtn.classList.toggle('active', state.repeatMode > 0);
-            updateRepeatButton();
+        playModeBtn.addEventListener('click', () => {
+            if (state.repeatMode === 0) {
+                state.repeatMode = 1;
+            } else if (state.repeatMode === 1) {
+                state.repeatMode = 0;
+                state.isShuffle = true;
+            } else {
+                state.repeatMode = 0;
+                state.isShuffle = false;
+            }
+            updatePlayModeButton();
         });
 
         downloadBtn.addEventListener('click', () => {
@@ -900,10 +942,10 @@
         });
 
         audio.addEventListener('ended', () => {
-            if (state.repeatMode === 2) {
+            if (state.repeatMode === 1) {
                 audio.currentTime = 0;
                 audio.play();
-            } else if (state.repeatMode === 1 || state.currentIndex < state.flatSongs.length - 1) {
+            } else if (state.isShuffle || state.currentIndex < state.flatSongs.length - 1) {
                 playSong(getNextIndex());
             } else {
                 state.isPlaying = false;
@@ -914,10 +956,119 @@
 
         audio.addEventListener('pause', () => {
             albumArt.classList.remove('playing');
+            stopVisualizer();
         });
 
         audio.addEventListener('play', () => {
             albumArt.classList.add('playing');
+            startVisualizer();
+        });
+
+        // 音频可视化器
+        let audioCtx;
+        let analyser;
+        let dataArray;
+        let animationId;
+        let source;
+
+        function initVisualizer() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256;
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+                source = audioCtx.createMediaElementSource(audio);
+                source.connect(analyser);
+                analyser.connect(audioCtx.destination);
+            }
+        }
+
+        function startVisualizer() {
+            if (!audioCtx) {
+                initVisualizer();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            drawVisualizer();
+        }
+
+        function stopVisualizer() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+        }
+
+        function drawVisualizer() {
+            animationId = requestAnimationFrame(drawVisualizer);
+
+            const canvas = visualizerCanvas;
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            analyser.getByteFrequencyData(dataArray);
+
+            ctx.clearRect(0, 0, width, height);
+
+            const barCount = 64;
+            const barWidth = (width / barCount) * 0.8;
+            const gap = (width / barCount) * 0.2;
+            let x = 0;
+
+            for (let i = 0; i < barCount; i++) {
+                const barHeight = (dataArray[i] / 255) * height * 0.8;
+                
+                const gradient = ctx.createLinearGradient(0, height - barHeight, 0, height);
+                gradient.addColorStop(0, 'var(--accent)');
+                gradient.addColorStop(1, 'var(--primary)');
+
+                ctx.fillStyle = gradient;
+                
+                const roundedHeight = barHeight > 0 ? Math.max(2, barHeight) : 0;
+                const cornerRadius = Math.min(4, roundedHeight / 2);
+                
+                ctx.beginPath();
+                ctx.roundRect(x, height - roundedHeight, barWidth, roundedHeight, [cornerRadius, cornerRadius, 0, 0]);
+                ctx.fill();
+
+                x += barWidth + gap;
+            }
+        }
+
+        // 播放速度控制
+        const SPEEDS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+        let currentSpeed = 1.0;
+
+        speedBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            speedMenu.classList.toggle('show');
+        });
+
+        speedMenu.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON') {
+                const speed = parseFloat(e.target.dataset.speed);
+                setPlaybackSpeed(speed);
+                speedMenu.classList.remove('show');
+            }
+        });
+
+        function setPlaybackSpeed(speed) {
+            currentSpeed = speed;
+            audio.playbackRate = speed;
+            speedLabel.textContent = speed === 1.0 ? '1.0x' : speed + 'x';
+            
+            speedMenu.querySelectorAll('button').forEach(btn => {
+                btn.classList.toggle('active', parseFloat(btn.dataset.speed) === speed);
+            });
+        }
+
+        document.addEventListener('click', (e) => {
+            if (!speedBtn.contains(e.target) && !speedMenu.contains(e.target)) {
+                speedMenu.classList.remove('show');
+            }
         });
 
         // 键盘快捷键
@@ -986,6 +1137,11 @@
             }
             document.removeEventListener('keydown', handleKeydown);
             songList.removeEventListener('click', handleSongListClick);
+            stopVisualizer();
+            if (audioCtx) {
+                audioCtx.close();
+                audioCtx = null;
+            }
             clearCoverUrl();
             audio.pause();
             audio.src = '';
