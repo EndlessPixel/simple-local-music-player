@@ -29,6 +29,30 @@ body {
     overflow: hidden;
 }
 
+.github-link {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    color: var(--text-muted);
+    text-decoration: none;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    transition: all 0.2s ease;
+    z-index: 1000;
+}
+
+.github-link:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+}
+
 /* 背景动画 */
 .bg-gradient {
     position: fixed;
