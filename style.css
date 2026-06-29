@@ -611,6 +611,11 @@ body {
         0 0 0 1px rgba(255, 255, 255, 0.1) inset;
 }
 
+.album-art ion-icon {
+    font-size: 100px;
+    color: rgba(255, 255, 255, 0.9);
+}
+
 .album-art.playing::before {
     content: '';
     position: absolute;
