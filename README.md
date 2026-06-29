@@ -41,6 +41,8 @@ node server.js
 music/
 ├── server.js      # 后端服务
 ├── play.html      # 播放器页面
+├── script.js      # 前端脚本
+├── style.css      # 样式文件
 ├── favicon.svg    # 网站图标
 ├── README.md      # 说明文档
 ├── music/         # 音乐文件目录
@@ -99,6 +101,7 @@ GET /文件夹名/歌曲名.mp3
 
 - **后端** - Node.js 原生 HTTP 模块
 - **前端** - 原生 HTML/CSS/JavaScript
+- **图标** - [Ionicons](https://ionic.io/ionicons) (v7.1.0)
 - **元数据解析** - [music-metadata](https://github.com/Borewit/music-metadata)
 
 ## 键盘快捷键
