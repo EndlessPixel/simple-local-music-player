@@ -172,6 +172,142 @@
             transform: translateY(-50%) scale(0.9);
         }
 
+        .search-history {
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 0;
+            right: 0;
+            background: rgba(30, 30, 50, 0.98);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+            z-index: 100;
+            max-height: 320px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .search-history.show {
+            display: block;
+        }
+
+        .search-history-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .search-history-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .search-history-clear {
+            font-size: 11px;
+            color: var(--accent);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .search-history-clear:hover {
+            background: rgba(244, 114, 182, 0.15);
+        }
+
+        .search-history-list {
+            padding: 8px;
+        }
+
+        .search-history-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            animation: fadeSlideDown 0.3s ease;
+        }
+
+        @keyframes fadeSlideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .search-history-item.removing {
+            animation: fadeOut 0.25s ease forwards;
+        }
+
+        @keyframes fadeOut {
+            to {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+        }
+
+        .search-history-item:hover {
+            background: var(--bg-hover);
+        }
+
+        .search-history-item svg {
+            flex-shrink: 0;
+            margin-right: 12px;
+            color: var(--text-muted);
+        }
+
+        .search-history-text {
+            flex: 1;
+            font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .search-history-delete {
+            flex-shrink: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-radius: 6px;
+            opacity: 0;
+            transition: all 0.2s;
+        }
+
+        .search-history-item:hover .search-history-delete {
+            opacity: 1;
+        }
+
+        .search-history-delete:hover {
+            background: rgba(255, 100, 100, 0.2);
+            color: #ff6464;
+        }
+
+        .search-history-empty {
+            padding: 24px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
         .refresh-btn.loading svg {
             animation: spin 1s linear infinite;
         }
@@ -840,6 +976,13 @@
                             <path d="M16 21h5v-5"/>
                         </svg>
                     </button>
+                    <div class="search-history" id="searchHistory">
+                        <div class="search-history-header">
+                            <span class="search-history-title">搜索历史</span>
+                            <button class="search-history-clear" id="clearHistoryBtn">清空全部</button>
+                        </div>
+                        <div class="search-history-list" id="searchHistoryList"></div>
+                    </div>
                 </div>
             </div>
             <div class="song-list-container">
@@ -980,8 +1123,13 @@
             repeatMode: 0,
             collapsedFolders: new Set(),
             refreshCountdown: 30,
-            refreshInterval: null
+            refreshInterval: null,
+            searchHistory: [],
+            lastSearchTerm: ''
         };
+
+        const SEARCH_HISTORY_KEY = 'musicSearchHistory';
+        const MAX_SEARCH_HISTORY = 20;
 
         // DOM 元素
         const audio = document.getElementById('audioPlayer');
@@ -989,6 +1137,9 @@
         const songCount = document.getElementById('songCount');
         const searchInput = document.getElementById('searchInput');
         const refreshBtn = document.getElementById('refreshBtn');
+        const searchHistoryEl = document.getElementById('searchHistory');
+        const searchHistoryList = document.getElementById('searchHistoryList');
+        const clearHistoryBtn = document.getElementById('clearHistoryBtn');
         const playBtn = document.getElementById('playBtn');
         const prevBtn = document.getElementById('prevBtn');
         const nextBtn = document.getElementById('nextBtn');
@@ -1017,12 +1168,15 @@
                         state.collapsedFolders = new Set();
                     }
                 }
-                
+
+                // 加载搜索历史
+                loadSearchHistory();
+
                 const res = await fetch('/api/songs');
                 state.songs = await res.json();
                 renderSongList(state.songs);
                 startAutoRefresh();
-                
+
                 const savedVolume = localStorage.getItem('musicVolume');
                 const volume = savedVolume ? parseInt(savedVolume) : 80;
                 volumeSlider.value = volume;
@@ -1432,8 +1586,182 @@
         });
 
         searchInput.addEventListener('input', (e) => {
-            renderSongList(state.songs, e.target.value);
+            const value = e.target.value;
+            renderSongList(state.songs, value);
+            if (value.trim()) {
+                showSearchHistory();
+            } else {
+                hideSearchHistory();
+            }
         });
+
+        searchInput.addEventListener('focus', () => {
+            if (state.searchHistory.length > 0) {
+                showSearchHistory();
+            }
+        });
+
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const term = searchInput.value.trim();
+                if (term) {
+                    addSearchHistory(term);
+                }
+                hideSearchHistory();
+                searchInput.blur();
+            } else if (e.key === 'Escape') {
+                hideSearchHistory();
+                searchInput.blur();
+            }
+        });
+
+        // 点击其他区域关闭搜索历史
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-wrapper')) {
+                hideSearchHistory();
+            }
+        });
+
+        // 阻止搜索历史区域的点击事件冒泡
+        searchHistoryEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        // 搜索历史相关函数
+        function loadSearchHistory() {
+            try {
+                const saved = localStorage.getItem(SEARCH_HISTORY_KEY);
+                if (saved) {
+                    state.searchHistory = JSON.parse(saved);
+                }
+            } catch {
+                state.searchHistory = [];
+            }
+            renderSearchHistory();
+        }
+
+        function saveSearchHistory() {
+            localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(state.searchHistory));
+        }
+
+        function addSearchHistory(term) {
+            // 不记录空搜索或仅包含空格的搜索
+            const trimmed = term.trim();
+            if (!trimmed) return;
+
+            // 避免记录重复的连续搜索关键词
+            if (state.lastSearchTerm === trimmed) return;
+            state.lastSearchTerm = trimmed;
+
+            // 移除已存在的相同记录（后面会添加到最前面）
+            state.searchHistory = state.searchHistory.filter(h => h.term !== trimmed);
+
+            // 添加到最前面
+            state.searchHistory.unshift({
+                term: trimmed,
+                timestamp: Date.now()
+            });
+
+            // 限制最大条数
+            if (state.searchHistory.length > MAX_SEARCH_HISTORY) {
+                state.searchHistory = state.searchHistory.slice(0, MAX_SEARCH_HISTORY);
+            }
+
+            saveSearchHistory();
+            renderSearchHistory();
+        }
+
+        function deleteSearchHistory(index, event) {
+            event.stopPropagation();
+            const items = searchHistoryList.querySelectorAll('.search-history-item');
+            const item = items[index];
+            if (item) {
+                item.classList.add('removing');
+                setTimeout(() => {
+                    state.searchHistory.splice(index, 1);
+                    saveSearchHistory();
+                    renderSearchHistory();
+                }, 250);
+            }
+        }
+
+        function clearAllSearchHistory() {
+            if (state.searchHistory.length === 0) return;
+            if (confirm('确定要清空所有搜索历史吗？')) {
+                const items = searchHistoryList.querySelectorAll('.search-history-item');
+                items.forEach((item, i) => {
+                    setTimeout(() => {
+                        item.classList.add('removing');
+                    }, i * 50);
+                });
+                setTimeout(() => {
+                    state.searchHistory = [];
+                    saveSearchHistory();
+                    renderSearchHistory();
+                }, 250 + items.length * 50);
+            }
+        }
+
+        function showSearchHistory() {
+            renderSearchHistory();
+            searchHistoryEl.classList.add('show');
+        }
+
+        function hideSearchHistory() {
+            searchHistoryEl.classList.remove('show');
+        }
+
+        function renderSearchHistory() {
+            if (state.searchHistory.length === 0) {
+                searchHistoryList.innerHTML = `
+                    <div class="search-history-empty">暂无搜索历史</div>
+                `;
+                clearHistoryBtn.style.display = 'none';
+                return;
+            }
+
+            clearHistoryBtn.style.display = 'block';
+            searchHistoryList.innerHTML = state.searchHistory.map((item, index) => `
+                <div class="search-history-item" data-index="${index}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="m21 21-4.35-4.35"/>
+                    </svg>
+                    <span class="search-history-text">${escapeHtml(item.term)}</span>
+                    <button class="search-history-delete" data-index="${index}" title="删除">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"/>
+                            <line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                    </button>
+                </div>
+            `).join('');
+
+            // 绑定点击事件
+            searchHistoryList.querySelectorAll('.search-history-item').forEach((item, index) => {
+                item.addEventListener('click', (e) => {
+                    if (!e.target.closest('.search-history-delete')) {
+                        const term = state.searchHistory[index].term;
+                        searchInput.value = term;
+                        renderSongList(state.songs, term);
+                        hideSearchHistory();
+                    }
+                });
+            });
+
+            searchHistoryList.querySelectorAll('.search-history-delete').forEach((btn, index) => {
+                btn.addEventListener('click', (e) => deleteSearchHistory(index, e));
+            });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        clearHistoryBtn.addEventListener('click', clearAllSearchHistory);
 
         refreshBtn.addEventListener('click', async () => {
             refreshBtn.classList.add('loading');
