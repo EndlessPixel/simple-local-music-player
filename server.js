@@ -63,7 +63,8 @@ function getSongMap(){
 
 const safePath = (p) => {
     if (!p || p === 'play.html') return join(__dirname, 'play.html');
-    if (p === 'favicon.svg') return join(__dirname, 'favicon.svg');
+    const allowedStatic = ['favicon.svg', 'style.css'];
+    if (allowedStatic.includes(p)) return join(__dirname, p);
     const full = resolve(MUSIC_DIR, decodeURIComponent(p));
     return full.startsWith(MUSIC_DIR) ? full : null;
 };
