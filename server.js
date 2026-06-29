@@ -106,54 +106,30 @@ function safeStaticPath(reqPath) {
 }
 
 function safeMusicPath(folder, song) {
-    // 对 song 进行安全检查
-    if (!song) {
-        console.log('safeMusicPath: song is empty');
-        return null;
-    }
+    if (!song) return null;
 
-    // 先解码
-    const decodedSong = decodeURIComponent(song);
+    let decodedSong = song;
+    let decodedFolder = folder || '';
     
-    // 检查解码后的 song 是否包含路径遍历
-    if (decodedSong.includes('..')) {
-        console.log('safeMusicPath: song contains ..');
-        console.log('  Original song:', song);
-        console.log('  Decoded song:', decodedSong);
-        return null;
+    if (song.includes('%')) {
+        decodedSong = decodeURIComponent(song);
+    }
+    if (folder && folder.includes('%')) {
+        decodedFolder = decodeURIComponent(folder);
     }
 
-    // 验证 folder 的每个部分
-    let decodedFolder = '';
-    if (folder) {
-        decodedFolder = decodeURIComponent(folder);
+    if (/^\.\./.test(decodedSong) || /\/\.\./.test(decodedSong)) return null;
+
+    if (decodedFolder) {
         const parts = decodedFolder.split('/');
         for (const part of parts) {
-            if (!isSafePathPart(part)) {
-                console.log('safeMusicPath: invalid folder part:', part);
-                return null;
-            }
+            if (!isSafePathPart(part)) return null;
         }
     }
 
     const filePath = decodedFolder ? join(MUSIC_DIR, decodedFolder, decodedSong) : join(MUSIC_DIR, decodedSong);
     const resolved = resolve(filePath);
-    
-    console.log('safeMusicPath check:', {
-        folder,
-        song,
-        decodedFolder,
-        decodedSong,
-        filePath,
-        resolved,
-        musicDir: MUSIC_DIR,
-        startsWith: resolved.startsWith(MUSIC_DIR)
-    });
-    
-    if (!resolved.startsWith(MUSIC_DIR)) {
-        console.log('safeMusicPath: path not in MUSIC_DIR');
-        return null;
-    }
+    if (!resolved.startsWith(MUSIC_DIR)) return null;
     return resolved;
 }
 
