@@ -1,8 +1,10 @@
-import {createServer} from 'http';
-import {createReadStream,statSync,readdirSync} from 'fs';
-import {join,resolve,extname,dirname} from 'path';
-import {fileURLToPath} from 'url';
-import {parseFile} from 'music-metadata';
+import { createServer } from 'http';
+import { createReadStream, statSync } from 'fs';
+import { promises as fs } from 'fs';
+import { join, resolve, extname, dirname, normalize, sep } from 'path';
+import { fileURLToPath } from 'url';
+import { parse } from 'url';
+import { parseFile } from 'music-metadata';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,16 +13,23 @@ const PORT = 18250;
 
 const AUDIO_EXTS = new Set(['.mp3', '.aac', '.flac', '.wav', '.ogg', '.m4a', '.wma']);
 
+// ---------- 缓存 ----------
 let songMapCache = {};
 let lastCacheMinute = -1;
+let scanPromise = null;
 
-const coverCache = new Map();
-const metaCache = new Map();
-const COVER_CACHE_MAX = 50;
-const META_CACHE_MAX = 100;
+const coverCache = new Map(); // key -> { data: Buffer, lastUsed, size }
+const metaCache = new Map();  // key -> { data: object, lastUsed, size }
+let coverCacheSize = 0;
+let metaCacheSize = 0;
 
-function pruneCache(cache, maxSize) {
-    while (cache.size > maxSize) {
+const COVER_MAX_SIZE = 50 * 1024 * 1024;   // 50 MiB
+const META_MAX_SIZE = 10 * 1024 * 1024;    // 10 MiB
+const COVER_MAX_ENTRIES = 50;
+const META_MAX_ENTRIES = 100;
+
+function pruneCache(cache, sizeVar, maxSize, maxEntries) {
+    while (cache.size > maxEntries || sizeVar > maxSize) {
         let oldestKey = null;
         let oldestTime = Infinity;
         for (const [key, entry] of cache) {
@@ -29,126 +38,245 @@ function pruneCache(cache, maxSize) {
                 oldestKey = key;
             }
         }
-        if (oldestKey !== null) {
-            cache.delete(oldestKey);
-        } else {
-            break;
-        }
+        if (oldestKey === null) break;
+        const entry = cache.get(oldestKey);
+        sizeVar -= entry.size || 0;
+        cache.delete(oldestKey);
     }
+    return sizeVar;
 }
 
-function getSongMap(){
-    const now = new Date();
-    const currentMinute = now.getMinutes();
-    if (currentMinute === lastCacheMinute) return songMapCache;
-    const map = {};
-    function scan(dir, relPath) {
-        for (const item of readdirSync(dir)) {
+function addToCoverCache(key, data) {
+    const size = data ? data.length : 0;
+    coverCache.set(key, { data, lastUsed: Date.now(), size });
+    coverCacheSize += size;
+    coverCacheSize = pruneCache(coverCache, coverCacheSize, COVER_MAX_SIZE, COVER_MAX_ENTRIES);
+}
+
+function addToMetaCache(key, data) {
+    const size = data ? JSON.stringify(data).length : 0;
+    metaCache.set(key, { data, lastUsed: Date.now(), size });
+    metaCacheSize += size;
+    metaCacheSize = pruneCache(metaCache, metaCacheSize, META_MAX_SIZE, META_MAX_ENTRIES);
+}
+
+// ---------- 目录扫描 ----------
+async function scanDir(dir, relPath, map) {
+    try {
+        const items = await fs.readdir(dir);
+        for (const item of items) {
             const full = join(dir, item);
-            try {
-                const st = statSync(full);
-                if (st.isDirectory()) scan(full, relPath ? `${relPath}/${item}` : item);
-                else if (AUDIO_EXTS.has(extname(item).toLowerCase())) {
-                    const key = relPath || '.';
-                    (map[key] ??= []).push(item);
-                }
-            } catch {}
+            const st = await fs.stat(full);
+            if (st.isDirectory()) {
+                await scanDir(full, relPath ? `${relPath}/${item}` : item, map);
+            } else if (AUDIO_EXTS.has(extname(item).toLowerCase())) {
+                const key = relPath || '.';
+                if (!map[key]) map[key] = [];
+                map[key].push(item);
+            }
         }
+    } catch (err) {
+        // 记录错误但不中断，可能部分目录不可读
+        console.error(`扫描目录 ${dir} 失败:`, err.message);
     }
-    scan(MUSIC_DIR, '');
-    songMapCache = map;
-    lastCacheMinute = currentMinute;
-    return map;
 }
 
-const safePath = (p) => {
-    if (!p || p === 'play.html') return join(__dirname, 'play.html');
-    const allowedStatic = ['favicon.svg', 'style.css'];
-    if (allowedStatic.includes(p)) return join(__dirname, p);
-    const full = resolve(MUSIC_DIR, decodeURIComponent(p));
-    return full.startsWith(MUSIC_DIR) ? full : null;
+async function getSongMap() {
+    const now = Math.floor(Date.now() / 60000);
+    if (now === lastCacheMinute && songMapCache) return songMapCache;
+
+    if (scanPromise) {
+        await scanPromise;
+        return songMapCache;
+    }
+
+    scanPromise = (async () => {
+        const map = {};
+        await scanDir(MUSIC_DIR, '', map);
+        songMapCache = map;
+        lastCacheMinute = now;
+    })();
+
+    try {
+        await scanPromise;
+    } finally {
+        scanPromise = null;
+    }
+    return songMapCache;
+}
+
+// ---------- 路径安全 ----------
+function isSafePathComponent(part) {
+    // 禁止 .. 和路径分隔符
+    return !part.includes('..') && !part.includes(sep) && !part.includes('/') && !part.includes('\\');
+}
+
+function safeStaticPath(reqPath) {
+    // 只允许特定静态文件或 play.html
+    const allowed = ['favicon.svg', 'style.css'];
+    if (allowed.includes(reqPath)) return join(__dirname, reqPath);
+    if (reqPath === 'play.html') return join(__dirname, 'play.html');
+    return null;
+}
+
+function safeMusicPath(folder, song) {
+    // 对 folder 和 song 进行基本安全检查
+    if (folder && !isSafePathComponent(folder)) return null;
+    if (song && !isSafePathComponent(song)) return null;
+
+    const decodedFolder = folder ? decodeURIComponent(folder) : '';
+    const decodedSong = decodeURIComponent(song);
+    const filePath = decodedFolder ? join(MUSIC_DIR, decodedFolder, decodedSong) : join(MUSIC_DIR, decodedSong);
+    const resolved = resolve(filePath);
+    if (!resolved.startsWith(MUSIC_DIR)) return null;
+    return resolved;
+}
+
+// ---------- MIME 和 Range ----------
+const MIME_MAP = {
+    '.mp3': 'audio/mpeg',
+    '.wav': 'audio/wav',
+    '.ogg': 'audio/ogg',
+    '.flac': 'audio/flac',
+    '.m4a': 'audio/m4a',
+    '.aac': 'audio/aac',
+    '.wma': 'audio/x-ms-wma',
+    '.html': 'text/html;charset=utf-8',
+    '.js': 'application/javascript;charset=utf-8',
+    '.css': 'text/css;charset=utf-8',
+    '.svg': 'image/svg+xml',
 };
 
-const parseRange = (range, size) => {
+function getMime(file) {
+    const ext = extname(file).toLowerCase();
+    return MIME_MAP[ext] || 'application/octet-stream';
+}
+
+function parseRange(range, size) {
     const m = range?.match(/bytes=(\d*)-(\d*)/);
     if (!m) return null;
     let [, s, e] = m;
     s = s === '' ? undefined : Number(s);
     e = e === '' ? undefined : Number(e);
     if (s === undefined && e === undefined) return null;
-    if (s === undefined) { s = Math.max(0, size - e); e = size - 1 }
+    if (s === undefined) { s = Math.max(0, size - e); e = size - 1; }
     else if (e === undefined) e = size - 1;
-    return (s >= size || e >= size || s > e) ? null : { start: s, end: e, len: e - s + 1 };
-};
-
-const getMime = (f) => {
-    const ext = extname(f).toLowerCase();
-    const map = {
-        '.mp3':'audio/mpeg',
-        '.wav':'audio/wav',
-        '.ogg':'audio/ogg',
-        '.flac':'audio/flac',
-        '.m4a':'audio/m4a',
-        '.aac':'audio/aac',
-        '.wma':'audio/x-ms-wma',
-        '.html':'text/html;charset=utf-8',
-        '.js':'application/javascript;charset=utf-8',
-        '.css':'text/css;charset=utf-8',
-        '.svg':'image/svg+xml'
-    };
-    return map[ext] || 'application/octet-stream';
-};
-
-const log = (req, res, startTime) => {
-    const ip = req.socket.remoteAddress;
-    const duration = Date.now() - startTime;
-    const url = req.url === '/api/songs' ? '/api/songs' : req.url.startsWith('/api/cover') ? '/api/cover' : req.url;
-    console.log(`[${new Date().toLocaleString()}] ${req.method} ${url} → ${res.statusCode} | ${ip} | ${duration}ms`);
-};
-
-function sendFile(res, path, range) {
-    const st = statSync(path);
-    if (!st.isFile()) throw new Error();
-    const mime = getMime(path);
-    const size = st.size;
-    if (!range || !AUDIO_EXTS.has(extname(path).toLowerCase())) {
-        res.writeHead(200, { 'Content-Type': mime, 'Content-Length': size, 'Accept-Ranges': 'bytes' });
-        return createReadStream(path).pipe(res);
-    }
-    const r = parseRange(range, size);
-    if (!r) return res.writeHead(416, { 'Content-Range': `bytes */${size}` }).end();
-    res.writeHead(206, {
-        'Content-Type': mime,
-        'Content-Length': r.len,
-        'Content-Range': `bytes ${r.start}-${r.end}/${size}`,
-        'Accept-Ranges': 'bytes'
-    });
-    createReadStream(path, { start: r.start, end: r.end }).pipe(res);
+    if (s >= size || e >= size || s > e) return null;
+    return { start: s, end: e, len: e - s + 1 };
 }
 
-async function getCoverFromFile(filePath) {
-    const cacheKey = filePath;
-    if (coverCache.has(cacheKey)) {
-        const entry = coverCache.get(cacheKey);
-        entry.lastUsed = Date.now();
-        return entry.data;
+// ---------- 发送文件（支持 Range、HEAD、流错误处理） ----------
+function sendFile(res, filePath, rangeHeader, method) {
+    try {
+        const st = statSync(filePath);
+        if (!st.isFile()) throw new Error('Not a file');
+        const size = st.size;
+        const mime = getMime(filePath);
+        const isAudio = AUDIO_EXTS.has(extname(filePath).toLowerCase());
+
+        // HEAD 请求：只发头部
+        if (method === 'HEAD') {
+            if (!isAudio) {
+                res.writeHead(200, {
+                    'Content-Type': mime,
+                    'Content-Length': size,
+                    'Accept-Ranges': 'bytes'
+                });
+            } else {
+                // 支持 range 响应头部（不发送 body）
+                const r = parseRange(rangeHeader, size);
+                if (r) {
+                    res.writeHead(206, {
+                        'Content-Type': mime,
+                        'Content-Length': r.len,
+                        'Content-Range': `bytes ${r.start}-${r.end}/${size}`,
+                        'Accept-Ranges': 'bytes'
+                    });
+                } else {
+                    res.writeHead(200, {
+                        'Content-Type': mime,
+                        'Content-Length': size,
+                        'Accept-Ranges': 'bytes'
+                    });
+                }
+            }
+            res.end();
+            return;
+        }
+
+        // GET 请求
+        if (!isAudio || !rangeHeader) {
+            res.writeHead(200, {
+                'Content-Type': mime,
+                'Content-Length': size,
+                'Accept-Ranges': 'bytes'
+            });
+            const stream = createReadStream(filePath);
+            stream.on('error', (err) => {
+                if (!res.headersSent) {
+                    res.writeHead(500).end('Stream Error');
+                } else {
+                    res.end();
+                }
+            });
+            req.on('close', () => stream.destroy());
+            stream.pipe(res);
+            return;
+        }
+
+        // 音频 Range
+        const r = parseRange(rangeHeader, size);
+        if (!r) {
+            res.writeHead(416, { 'Content-Range': `bytes */${size}` }).end();
+            return;
+        }
+        res.writeHead(206, {
+            'Content-Type': mime,
+            'Content-Length': r.len,
+            'Content-Range': `bytes ${r.start}-${r.end}/${size}`,
+            'Accept-Ranges': 'bytes'
+        });
+        const stream = createReadStream(filePath, { start: r.start, end: r.end });
+        stream.on('error', (err) => {
+            if (!res.headersSent) {
+                res.writeHead(500).end('Stream Error');
+            } else {
+                res.end();
+            }
+        });
+        req.on('close', () => stream.destroy());
+        stream.pipe(res);
+    } catch (err) {
+        res.writeHead(500).end('Internal Server Error');
     }
-    
+}
+
+// ---------- 元数据与封面提取（带失败缓存） ----------
+async function getCoverFromFile(filePath) {
+    if (coverCache.has(filePath)) {
+        const entry = coverCache.get(filePath);
+        entry.lastUsed = Date.now();
+        return entry.data; // 可能为 null
+    }
+
     try {
         const metadata = await parseFile(filePath, { skipCovers: false });
         if (metadata.common.picture && metadata.common.picture.length > 0) {
-            const picture = metadata.common.picture[0];
-            const data = {
-                data: picture.data,
-                mime: picture.format || 'image/jpeg'
-            };
-            coverCache.set(cacheKey, { data, lastUsed: Date.now() });
-            pruneCache(coverCache, COVER_CACHE_MAX);
-            return data;
+            const pic = metadata.common.picture[0];
+            const data = pic.data;
+            const mime = pic.format || 'image/jpeg';
+            const result = { data, mime };
+            addToCoverCache(filePath, result);
+            return result;
         }
-    } catch {
+        // 没有封面，缓存 null
+        addToCoverCache(filePath, null);
+        return null;
+    } catch (err) {
+        // 解析失败，缓存 null
+        addToCoverCache(filePath, null);
+        return null;
     }
-    return null;
 }
 
 async function getMetaFromFile(filePath) {
@@ -157,7 +285,7 @@ async function getMetaFromFile(filePath) {
         entry.lastUsed = Date.now();
         return entry.data;
     }
-    
+
     try {
         const metadata = await parseFile(filePath, { skipCovers: true });
         const data = {
@@ -165,46 +293,68 @@ async function getMetaFromFile(filePath) {
             title: metadata.common.title || null,
             duration: metadata.format.duration || null
         };
-        metaCache.set(filePath, { data, lastUsed: Date.now() });
-        pruneCache(metaCache, META_CACHE_MAX);
+        addToMetaCache(filePath, data);
         return data;
-    } catch {
-        return { artist: null, title: null, duration: null };
+    } catch (err) {
+        // 解析失败，缓存空对象
+        const empty = { artist: null, title: null, duration: null };
+        addToMetaCache(filePath, empty);
+        return empty;
     }
 }
 
+// ---------- 日志（脱敏） ----------
+function log(req, res, startTime) {
+    const ip = req.socket.remoteAddress;
+    const duration = Date.now() - startTime;
+    const { pathname } = parse(req.url);
+    const displayUrl = pathname || req.url;
+    console.log(`[${new Date().toLocaleString()}] ${req.method} ${displayUrl} → ${res.statusCode} | ${ip} | ${duration}ms`);
+}
+
+// ---------- 主服务器 ----------
 const server = createServer(async (req, res) => {
-    const start = Date.now();
-    res.on('finish', () => log(req, res, start));
+    const startTime = Date.now();
+    res.on('finish', () => log(req, res, startTime));
+
+    // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
     res.setHeader('Access-Control-Allow-Headers', '*');
-    
-    if (req.method === 'OPTIONS') return res.writeHead(204).end();
-    
-    if (req.url === '/api/songs') {
-        res.setHeader('Content-Type', 'application/json');
-        return res.end(JSON.stringify(getSongMap()));
+
+    if (req.method === 'OPTIONS') {
+        res.writeHead(204).end();
+        return;
     }
-    
-    if (req.url.startsWith('/api/cover')) {
-        const queryStart = req.url.indexOf('?');
-        const query = queryStart >= 0 ? req.url.slice(queryStart) : '';
-        const params = new URLSearchParams(query);
-        const folder = params.get('folder') || '';
-        const song = params.get('song');
-        
-        if (!song) {
-            return res.writeHead(400).end('Bad Request');
+
+    const { pathname, query } = parse(req.url, true);
+
+    try {
+        // ---------- API: /api/songs ----------
+        if (pathname === '/api/songs') {
+            const map = await getSongMap();
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(map));
+            return;
         }
-        
-        const filePath = folder ? join(MUSIC_DIR, folder, decodeURIComponent(song)) : join(MUSIC_DIR, decodeURIComponent(song));
-        
-        if (!filePath.startsWith(MUSIC_DIR)) {
-            return res.writeHead(403).end('Forbidden');
-        }
-        
-        try {
+
+        // ---------- API: /api/cover ----------
+        if (pathname === '/api/cover') {
+            const folder = query.folder || '';
+            const song = query.song;
+            if (!song) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Missing song parameter' }));
+                return;
+            }
+
+            const filePath = safeMusicPath(folder, song);
+            if (!filePath) {
+                res.writeHead(403, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Forbidden' }));
+                return;
+            }
+
             const cover = await getCoverFromFile(filePath);
             if (cover) {
                 res.writeHead(200, {
@@ -212,51 +362,63 @@ const server = createServer(async (req, res) => {
                     'Content-Length': cover.data.length,
                     'Cache-Control': 'public, max-age=86400'
                 });
-                return res.end(cover.data);
+                res.end(cover.data);
             } else {
-                return res.writeHead(404).end('No cover');
+                res.writeHead(404).end('No cover');
             }
-        } catch {
-            return res.writeHead(404).end('No cover');
+            return;
         }
-    }
-    
-    if (req.url.startsWith('/api/meta')) {
-        const queryStart = req.url.indexOf('?');
-        const query = queryStart >= 0 ? req.url.slice(queryStart) : '';
-        const params = new URLSearchParams(query);
-        const folder = params.get('folder') || '';
-        const song = params.get('song');
-        
-        if (!song) {
-            return res.writeHead(400).json({ error: 'Bad Request' });
-        }
-        
-        const filePath = folder ? join(MUSIC_DIR, folder, decodeURIComponent(song)) : join(MUSIC_DIR, decodeURIComponent(song));
-        
-        if (!filePath.startsWith(MUSIC_DIR)) {
-            return res.writeHead(403).json({ error: 'Forbidden' });
-        }
-        
-        try {
+
+        // ---------- API: /api/meta ----------
+        if (pathname === '/api/meta') {
+            const folder = query.folder || '';
+            const song = query.song;
+            if (!song) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Missing song parameter' }));
+                return;
+            }
+
+            const filePath = safeMusicPath(folder, song);
+            if (!filePath) {
+                res.writeHead(403, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Forbidden' }));
+                return;
+            }
+
             const meta = await getMetaFromFile(filePath);
             res.setHeader('Content-Type', 'application/json');
-            return res.end(JSON.stringify(meta));
-        } catch {
-            return res.writeHead(500).json({ error: 'Internal Error' });
+            res.end(JSON.stringify(meta));
+            return;
         }
-    }
-    
-    const path = safePath(req.url.slice(1) || 'play.html');
-    if (!path) return res.writeHead(403).end('Forbidden');
-    
-    try {
-        sendFile(res, path, req.headers.range);
-    } catch {
-        res.writeHead(404).end('404 文件不存在');
+
+        // ---------- 静态文件 ----------
+        let staticPath = null;
+        if (pathname === '/') {
+            staticPath = join(__dirname, 'play.html');
+        } else {
+            const base = pathname.slice(1); // 去掉前导 /
+            staticPath = safeStaticPath(base);
+        }
+
+        if (!staticPath) {
+            res.writeHead(403).end('Forbidden');
+            return;
+        }
+
+        sendFile(res, staticPath, req.headers.range, req.method);
+    } catch (err) {
+        console.error('Unhandled error:', err);
+        if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Internal Server Error' }));
+        } else {
+            res.end();
+        }
     }
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`音乐服务已启动`);
+    console.log(`音乐服务已启动，端口 ${PORT}`);
+    console.log(`访问地址：http://localhost:${PORT}`);
 });
