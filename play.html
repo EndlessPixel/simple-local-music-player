@@ -880,19 +880,18 @@
             }
 
             saveSearchHistory();
-            renderSearchHistory();
+            renderSearchHistory(searchInput.value);
         }
 
-        function deleteSearchHistory(index, event) {
+        function deleteSearchHistory(term, event) {
             event.stopPropagation();
-            const items = searchHistoryList.querySelectorAll('.search-history-item');
-            const item = items[index];
+            const item = document.querySelector(`.search-history-item[data-term="${term}"]`);
             if (item) {
                 item.classList.add('removing');
                 setTimeout(() => {
-                    state.searchHistory.splice(index, 1);
+                    state.searchHistory = state.searchHistory.filter(h => h.term !== term);
                     saveSearchHistory();
-                    renderSearchHistory();
+                    renderSearchHistory(searchInput.value);
                 }, 250);
             }
         }
@@ -909,13 +908,13 @@
                 setTimeout(() => {
                     state.searchHistory = [];
                     saveSearchHistory();
-                    renderSearchHistory();
+                    renderSearchHistory(searchInput.value);
                 }, 250 + items.length * 50);
             }
         }
 
         function showSearchHistory() {
-            renderSearchHistory();
+            renderSearchHistory(searchInput.value);
             searchHistoryEl.classList.add('show');
         }
 
@@ -923,24 +922,29 @@
             searchHistoryEl.classList.remove('show');
         }
 
-        function renderSearchHistory() {
-            if (state.searchHistory.length === 0) {
+        function renderSearchHistory(filter = '') {
+            const filtered = state.searchHistory.filter(item => 
+                item.term.toLowerCase().includes(filter.toLowerCase())
+            );
+            
+            if (filtered.length === 0) {
                 searchHistoryList.innerHTML = `
-                    <div class="search-history-empty">暂无搜索历史</div>
+                    <div class="search-history-empty">${filter ? '没有匹配的搜索历史' : '暂无搜索历史'}</div>
                 `;
                 clearHistoryBtn.style.display = 'none';
                 return;
             }
 
             clearHistoryBtn.style.display = 'block';
-            searchHistoryList.innerHTML = state.searchHistory.map((item, index) => `
-                <div class="search-history-item" data-index="${index}">
+            // 使用 term 作为唯一标识，避免索引问题
+            searchHistoryList.innerHTML = filtered.map((item) => `
+                <div class="search-history-item" data-term="${escapeHtml(item.term)}">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="11" cy="11" r="8"/>
                         <path d="m21 21-4.35-4.35"/>
                     </svg>
                     <span class="search-history-text">${escapeHtml(item.term)}</span>
-                    <button class="search-history-delete" data-index="${index}" title="删除">
+                    <button class="search-history-delete" data-term="${escapeHtml(item.term)}" title="删除">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="18" y1="6" x2="6" y2="18"/>
                             <line x1="6" y1="6" x2="18" y2="18"/>
@@ -950,10 +954,10 @@
             `).join('');
 
             // 绑定点击事件
-            searchHistoryList.querySelectorAll('.search-history-item').forEach((item, index) => {
+            searchHistoryList.querySelectorAll('.search-history-item').forEach((item) => {
                 item.addEventListener('click', (e) => {
                     if (!e.target.closest('.search-history-delete')) {
-                        const term = state.searchHistory[index].term;
+                        const term = item.dataset.term;
                         searchInput.value = term;
                         renderSongList(state.songs, term);
                         hideSearchHistory();
@@ -961,8 +965,8 @@
                 });
             });
 
-            searchHistoryList.querySelectorAll('.search-history-delete').forEach((btn, index) => {
-                btn.addEventListener('click', (e) => deleteSearchHistory(index, e));
+            searchHistoryList.querySelectorAll('.search-history-delete').forEach((btn) => {
+                btn.addEventListener('click', (e) => deleteSearchHistory(btn.dataset.term, e));
             });
         }
 
