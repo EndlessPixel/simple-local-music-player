@@ -50,6 +50,12 @@
                             <path d="M16 21h5v-5"/>
                         </svg>
                     </button>
+                    <button class="changelog-btn" id="changelogBtn" title="更新日志">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="16 18 22 12 16 6"/>
+                            <polyline points="8 6 2 12 8 18"/>
+                        </svg>
+                    </button>
                     <div class="search-history" id="searchHistory">
                         <div class="search-history-header">
                             <span class="search-history-title">搜索历史</span>
@@ -90,7 +96,7 @@
                         <p class="current-path" id="currentPath"></p>
                     </div>
                     <div class="visualizer-container">
-                        <canvas id="visualizer" width="400" height="60"></canvas>
+                        <canvas id="visualizer" width="800" height="60"></canvas>
                     </div>
                 </div>
             </div>
@@ -203,6 +209,26 @@
 
     <audio id="audioPlayer"></audio>
 
+    <div class="changelog-panel" id="changelogPanel">
+        <div class="changelog-header">
+            <h3>更新日志</h3>
+            <button class="changelog-close" id="changelogClose">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="changelog-content" id="changelogContent">
+            <div class="loading-container">
+                <div class="spinner"></div>
+                <span>正在加载...</span>
+            </div>
+        </div>
+        <div class="changelog-pagination" id="changelogPagination"></div>
+    </div>
+    <div class="changelog-overlay" id="changelogOverlay"></div>
+
     <script>
         // 播放器状态
         const state = {
@@ -245,7 +271,6 @@
         const currentArtistEl = document.getElementById('currentArtist');
         const currentPathEl = document.getElementById('currentPath');
         const albumArt = document.getElementById('albumArt');
-        const volumeSlider = document.getElementById('volumeSlider');
         const visualizerCanvas = document.getElementById('visualizer');
         const speedBtn = document.getElementById('speedBtn');
         const speedMenu = document.getElementById('speedMenu');
@@ -1070,6 +1095,117 @@
                 speedMenu.classList.remove('show');
             }
         });
+
+        // 更新日志功能
+        let currentPage = 1;
+        const PER_PAGE = 20;
+
+        function initChangelog() {
+            const changelogBtn = document.getElementById('changelogBtn');
+            const changelogPanel = document.getElementById('changelogPanel');
+            const changelogOverlay = document.getElementById('changelogOverlay');
+            const changelogClose = document.getElementById('changelogClose');
+            const changelogContent = document.getElementById('changelogContent');
+            const changelogPagination = document.getElementById('changelogPagination');
+
+            changelogBtn.addEventListener('click', () => {
+                showChangelog();
+            });
+
+            changelogClose.addEventListener('click', () => {
+                hideChangelog();
+            });
+
+            changelogOverlay.addEventListener('click', () => {
+                hideChangelog();
+            });
+
+            function showChangelog() {
+                changelogPanel.classList.add('show');
+                changelogOverlay.classList.add('show');
+                currentPage = 1;
+                loadChangelog(currentPage);
+            }
+
+            function hideChangelog() {
+                changelogPanel.classList.remove('show');
+                changelogOverlay.classList.remove('show');
+            }
+
+            async function loadChangelog(page) {
+                changelogContent.innerHTML = `
+                    <div class="loading-container">
+                        <div class="spinner"></div>
+                        <span>正在加载...</span>
+                    </div>
+                `;
+                
+                try {
+                    const res = await fetch(`/api/commits?per_page=${PER_PAGE}&page=${page}`);
+                    const commits = await res.json();
+                    
+                    if (!Array.isArray(commits)) {
+                        changelogContent.innerHTML = '<div class="changelog-error">加载失败，请重试</div>';
+                        changelogPagination.innerHTML = '';
+                        return;
+                    }
+                    
+                    if (commits.length === 0) {
+                        changelogContent.innerHTML = '<div class="changelog-empty">暂无更新日志</div>';
+                        changelogPagination.innerHTML = '';
+                        return;
+                    }
+                    
+                    renderChangelog(commits);
+                    renderPagination(page, commits.length);
+                } catch (err) {
+                    changelogContent.innerHTML = '<div class="changelog-error">加载失败：' + err.message + '</div>';
+                    changelogPagination.innerHTML = '';
+                }
+            }
+
+            function renderChangelog(commits) {
+                changelogContent.innerHTML = commits.map(commit => {
+                    const date = new Date(commit.commit.author.date).toLocaleString('zh-CN');
+                    const author = commit.author || commit.commit.author;
+                    const avatar = author && author.avatar_url ? author.avatar_url : '';
+                    const authorName = author ? (author.login || author.name || '未知作者') : '未知作者';
+                    
+                    return `
+                        <div class="changelog-item">
+                            <div class="changelog-commit">${commit.sha.substring(0, 7)}</div>
+                            <div class="changelog-message">${escapeHtml(commit.commit.message)}</div>
+                            <div class="changelog-author">
+                                ${avatar ? `<img src="${avatar}" alt="${authorName}">` : ''}
+                                <span>${authorName}</span>
+                            </div>
+                            <div class="changelog-date">${date}</div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            function renderPagination(page, count) {
+                const hasPrev = page > 1;
+                const hasNext = count === PER_PAGE;
+                
+                let html = '';
+                
+                if (hasPrev) {
+                    html += `<button onclick="loadChangelog(${page - 1})">上一页</button>`;
+                }
+                
+                html += `<button class="active">${page}</button>`;
+                
+                if (hasNext) {
+                    html += `<button onclick="loadChangelog(${page + 1})">下一页</button>`;
+                }
+                
+                changelogPagination.innerHTML = html;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', initChangelog);
 
         // 键盘快捷键
         function handleKeydown(e) {

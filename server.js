@@ -1,4 +1,5 @@
 import { createServer } from 'http';
+import https from 'https';
 import { createReadStream, statSync } from 'fs';
 import { promises as fs } from 'fs';
 import { join, resolve, extname, dirname, normalize, sep } from 'path';
@@ -99,7 +100,7 @@ function isSafePathPart(part) {
 
 function safeStaticPath(reqPath) {
     // 只允许特定静态文件或 play.html
-    const allowed = ['favicon.svg', 'style.css'];
+    const allowed = ['favicon.svg', 'style.css', 'script.js'];
     if (allowed.includes(reqPath)) return join(__dirname, reqPath);
     if (reqPath === 'play.html') return join(__dirname, 'play.html');
     return null;
@@ -398,6 +399,34 @@ const server = createServer(async (req, res) => {
             const meta = await getMetaFromFile(filePath);
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify(meta));
+            return;
+        }
+
+        // ---------- 更新日志代理 ----------
+        if (pathname.startsWith('/api/commits')) {
+            const queryStr = pathname.slice('/api/commits'.length) || '';
+            const targetUrl = `https://api.github.com/repos/EndlessPixel/simple-local-music-player/commits${queryStr}`;
+            
+            https.get(targetUrl, {
+                headers: {
+                    'User-Agent': 'simple-local-music-player',
+                    'Accept': 'application/json'
+                },
+                rejectUnauthorized: false
+            }, (proxyRes) => {
+                let data = '';
+                proxyRes.on('data', (chunk) => data += chunk);
+                proxyRes.on('end', () => {
+                    res.writeHead(proxyRes.statusCode, {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    });
+                    res.end(data);
+                });
+            }).on('error', (err) => {
+                console.error('Proxy error:', err);
+                res.writeHead(500).end(JSON.stringify({ error: err.message }));
+            });
             return;
         }
 
