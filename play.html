@@ -526,11 +526,51 @@
             loadMeta(folder, song);
 
             updateActiveItem({ folder, song });
+            scrollToFolder(folder);
 
             currentTitleEl.textContent = song.replace(/\.[^.]+$/, '');
             const pathDisplay = folder === '.' ? song : `${folder}/${song}`;
             currentPathEl.textContent = pathDisplay;
             albumArt.classList.add('playing');
+        }
+
+        // 滚动到指定文件夹
+        function scrollToFolder(folder) {
+            // 找到对应的文件夹组
+            const folderGroups = songList.querySelectorAll('.folder-group');
+            let targetGroup = null;
+
+            folderGroups.forEach(group => {
+                const header = group.querySelector('.folder-header');
+                if (header && header.dataset.folder === folder) {
+                    targetGroup = group;
+                }
+            });
+
+            if (!targetGroup) return;
+
+            // 如果文件夹是折叠状态，先展开
+            if (targetGroup.classList.contains('collapsed')) {
+                state.collapsedFolders.delete(folder);
+                localStorage.setItem('collapsedFolders', JSON.stringify([...state.collapsedFolders]));
+                targetGroup.classList.remove('collapsed');
+                const songsContainer = targetGroup.querySelector('.folder-songs');
+                if (songsContainer) {
+                    songsContainer.classList.remove('collapsed');
+                }
+            }
+
+            // 检查是否在可视区域内
+            const containerRect = songList.getBoundingClientRect();
+            const groupRect = targetGroup.getBoundingClientRect();
+
+            // 如果文件夹不在可视区域顶部位置，滚动到顶部
+            if (groupRect.top < containerRect.top || groupRect.top > containerRect.top + 100) {
+                songList.scrollTo({
+                    top: targetGroup.offsetTop - 10,
+                    behavior: 'smooth'
+                });
+            }
         }
 
         // 更新播放按钮
