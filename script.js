@@ -63,11 +63,7 @@ async function init() {
         songList.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-icon">
-                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <circle cx="12" cy="12" r="10"/>
-                                <line x1="15" x2="9" y1="9" y2="15"/>
-                                <line x1="9" x2="15" y1="9" y2="15"/>
-                            </svg>
+                            <ion-icon name="alert-circle" size="large"></ion-icon>
                         </div>
                         <div class="empty-text">加载失败，请刷新重试</div>
                     </div>
@@ -109,15 +105,10 @@ function renderSongList(songs, filter = '') {
         header.dataset.folder = folder;
         header.innerHTML = `
                     <span class="folder-toggle">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="6 9 12 15 18 9"/>
-                        </svg>
+                        <ion-icon name="chevron-down" size="small"></ion-icon>
                     </span>
                     <span class="folder-icon">
-                        ${folder === '.' ?
-                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' :
-                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.5a2 2 0 0 1-2-2"/><path d="M4 20V4a2 2 0 0 1 2-2h5"/></svg>'
-            }
+                        <ion-icon name="${folder === '.' ? 'folder-open' : 'folder'}" size="small"></ion-icon>
                     </span>
                     <span>${folder === '.' ? '根目录' : folder}</span>
                     <span style="margin-left: auto; opacity: 0.5;">${songsInFolder.length}</span>
@@ -141,7 +132,7 @@ function renderSongList(songs, filter = '') {
 
             const playIcon = document.createElement('span');
             playIcon.className = 'song-play';
-            playIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+            playIcon.innerHTML = '<ion-icon name="play" size="small"></ion-icon>';
 
             const info = document.createElement('div');
             info.className = 'song-info';
@@ -178,11 +169,7 @@ function renderSongList(songs, filter = '') {
         songList.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-icon">
-                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <path d="M9 18V5l12-2v13"/>
-                                <circle cx="6" cy="18" r="3"/>
-                                <circle cx="18" cy="16" r="3"/>
-                            </svg>
+                            <ion-icon name="musical-notes" size="large"></ion-icon>
                         </div>
                         <div class="empty-text">${filter ? '没有找到匹配的歌曲' : '将音乐文件放入 music 文件夹'}</div>
                     </div>
@@ -278,13 +265,7 @@ async function loadCover(folder, song) {
     } catch {
     }
 
-    albumArt.innerHTML = `
-                <svg width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M9 18V5l12-2v13"/>
-                    <circle cx="6" cy="18" r="3"/>
-                    <circle cx="18" cy="16" r="3"/>
-                </svg>
-            `;
+    albumArt.innerHTML = '<ion-icon name="musical-notes" size="large"></ion-icon>';
 }
 
 // 加载元数据（歌手、时长）
@@ -663,16 +644,10 @@ function renderSearchHistory(filter = '') {
     // 使用 term 作为唯一标识，避免索引问题
     searchHistoryList.innerHTML = filtered.map((item) => `
                 <div class="search-history-item" data-term="${escapeHtml(item.term)}">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="11" cy="11" r="8"/>
-                        <path d="m21 21-4.35-4.35"/>
-                    </svg>
+                    <ion-icon name="search" size="small"></ion-icon>
                     <span class="search-history-text">${escapeHtml(item.term)}</span>
                     <button class="search-history-delete" data-term="${escapeHtml(item.term)}" title="删除">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="18" y1="6" x2="6" y2="18"/>
-                            <line x1="6" y1="6" x2="18" y2="18"/>
-                        </svg>
+                        <ion-icon name="close" size="small"></ion-icon>
                     </button>
                 </div>
             `).join('');

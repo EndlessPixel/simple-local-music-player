@@ -293,7 +293,8 @@ body {
     background: var(--bg-hover);
 }
 
-.search-history-item svg {
+.search-history-item svg,
+.search-history-item ion-icon {
     flex-shrink: 0;
     margin-right: 12px;
     color: var(--text-muted);
@@ -339,7 +340,8 @@ body {
     font-size: 13px;
 }
 
-.refresh-btn.loading svg {
+.refresh-btn.loading svg,
+.refresh-btn.loading ion-icon {
     animation: spin 1s linear infinite;
 }
 
@@ -992,7 +994,8 @@ body {
     justify-content: center;
 }
 
-.empty-icon svg {
+.empty-icon svg,
+.empty-icon ion-icon {
     color: var(--text-muted);
 }
 
