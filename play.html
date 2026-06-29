@@ -704,9 +704,9 @@
         });
 
         playModeBtn.addEventListener('click', () => {
-            if (state.repeatMode === 0) {
+            if (!state.isShuffle && state.repeatMode === 0) {
                 state.repeatMode = 1;
-            } else if (state.repeatMode === 1) {
+            } else if (!state.isShuffle && state.repeatMode === 1) {
                 state.repeatMode = 0;
                 state.isShuffle = true;
             } else {
