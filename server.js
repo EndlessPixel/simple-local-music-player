@@ -424,7 +424,8 @@ const server = createServer(async (req, res) => {
 
         // ---------- 更新日志代理 ----------
         if (pathname.startsWith('/api/commits')) {
-            const queryStr = pathname.slice('/api/commits'.length) || '';
+            const { query } = parse(req.url);
+            const queryStr = query ? `?${query}` : '';
             const targetUrl = `https://api.github.com/repos/EndlessPixel/simple-local-music-player/commits${queryStr}`;
 
             https.get(targetUrl, {
