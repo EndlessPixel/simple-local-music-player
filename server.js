@@ -404,7 +404,7 @@ const server = createServer(async (req, res) => {
 
         // ---------- Ionicons 代理 ----------
         if (pathname.startsWith('/ionicons/')) {
-            const targetUrl = `https://unpkg.com/ionicons@7.1.0/dist/ionicons${pathname}`;
+            const targetUrl = `https://unpkg.com/ionicons@7.1.0/dist/ionicons${pathname.replace('/ionicons', '')}`;
             https.get(targetUrl, {
                 rejectUnauthorized: false
             }, (proxyRes) => {
