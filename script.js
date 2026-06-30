@@ -532,12 +532,7 @@ searchInput.addEventListener('keydown', (e) => {
     }
 });
 
-// 点击其他区域关闭搜索历史
-document.addEventListener('click', (e) => {
-    if (!e.target.closest('.search-wrapper')) {
-        hideSearchHistory();
-    }
-});
+
 
 // 阻止搜索历史区域的点击事件冒泡
 searchHistoryEl.addEventListener('click', (e) => {
@@ -641,7 +636,6 @@ function renderSearchHistory(filter = '') {
     }
 
     clearHistoryBtn.style.display = 'block';
-    // 使用 term 作为唯一标识，避免索引问题
     searchHistoryList.innerHTML = filtered.map((item) => `
                 <div class="search-history-item" data-term="${escapeHtml(item.term)}">
                     <ion-icon name="search" size="small"></ion-icon>
@@ -651,23 +645,24 @@ function renderSearchHistory(filter = '') {
                     </button>
                 </div>
             `).join('');
-
-    // 绑定点击事件
-    searchHistoryList.querySelectorAll('.search-history-item').forEach((item) => {
-        item.addEventListener('click', (e) => {
-            if (!e.target.closest('.search-history-delete')) {
-                const term = item.dataset.term;
-                searchInput.value = term;
-                renderSongList(state.songs, term);
-                hideSearchHistory();
-            }
-        });
-    });
-
-    searchHistoryList.querySelectorAll('.search-history-delete').forEach((btn) => {
-        btn.addEventListener('click', (e) => deleteSearchHistory(btn.dataset.term, e));
-    });
 }
+
+function handleSearchHistoryClick(e) {
+    const item = e.target.closest('.search-history-item');
+    if (item) {
+        const deleteBtn = e.target.closest('.search-history-delete');
+        if (deleteBtn) {
+            deleteSearchHistory(deleteBtn.dataset.term, e);
+        } else {
+            const term = item.dataset.term;
+            searchInput.value = term;
+            renderSongList(state.songs, term);
+            hideSearchHistory();
+        }
+    }
+}
+
+searchHistoryList.addEventListener('click', handleSearchHistoryClick);
 
 function escapeHtml(text) {
     const div = document.createElement('div');
@@ -689,17 +684,17 @@ refreshBtn.addEventListener('click', async () => {
     }
 });
 
-audio.addEventListener('timeupdate', () => {
+function handleAudioTimeUpdate() {
     const percent = (audio.currentTime / audio.duration) * 100;
     progressFill.style.width = `${percent}%`;
     currentTimeEl.textContent = formatTime(audio.currentTime);
-});
+}
 
-audio.addEventListener('loadedmetadata', () => {
+function handleAudioLoadedMetadata() {
     totalTimeEl.textContent = formatTime(audio.duration);
-});
+}
 
-audio.addEventListener('ended', () => {
+function handleAudioEnded() {
     if (state.repeatMode === 1) {
         audio.currentTime = 0;
         audio.play();
@@ -710,17 +705,23 @@ audio.addEventListener('ended', () => {
         updatePlayButton();
         albumArt.classList.remove('playing');
     }
-});
+}
 
-audio.addEventListener('pause', () => {
+function handleAudioPause() {
     albumArt.classList.remove('playing');
     stopVisualizer();
-});
+}
 
-audio.addEventListener('play', () => {
+function handleAudioPlay() {
     albumArt.classList.add('playing');
     startVisualizer();
-});
+}
+
+audio.addEventListener('timeupdate', handleAudioTimeUpdate);
+audio.addEventListener('loadedmetadata', handleAudioLoadedMetadata);
+audio.addEventListener('ended', handleAudioEnded);
+audio.addEventListener('pause', handleAudioPause);
+audio.addEventListener('play', handleAudioPlay);
 
 // 音频可视化器
 let audioCtx;
@@ -823,11 +824,16 @@ function setPlaybackSpeed(speed) {
     });
 }
 
-document.addEventListener('click', (e) => {
+function handleDocumentClick(e) {
+    if (!e.target.closest('.search-wrapper')) {
+        hideSearchHistory();
+    }
     if (!speedBtn.contains(e.target) && !speedMenu.contains(e.target)) {
         speedMenu.classList.remove('show');
     }
-});
+}
+
+document.addEventListener('click', handleDocumentClick);
 
 // 更新日志功能
 let currentPage = 1;
@@ -1075,7 +1081,14 @@ function cleanup() {
         state.refreshInterval = null;
     }
     document.removeEventListener('keydown', handleKeydown);
+    document.removeEventListener('click', handleDocumentClick);
     songList.removeEventListener('click', handleSongListClick);
+    searchHistoryList.removeEventListener('click', handleSearchHistoryClick);
+    audio.removeEventListener('timeupdate', handleAudioTimeUpdate);
+    audio.removeEventListener('loadedmetadata', handleAudioLoadedMetadata);
+    audio.removeEventListener('ended', handleAudioEnded);
+    audio.removeEventListener('pause', handleAudioPause);
+    audio.removeEventListener('play', handleAudioPlay);
     stopVisualizer();
     if (audioCtx) {
         audioCtx.close();
