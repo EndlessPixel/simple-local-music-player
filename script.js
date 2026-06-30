@@ -24,7 +24,6 @@ const clearHistoryBtn = document.getElementById('clearHistoryBtn');
 const playBtn = document.getElementById('playBtn');
 const prevBtn = document.getElementById('prevBtn');
 const nextBtn = document.getElementById('nextBtn');
-const repeatBtn = document.getElementById('repeatBtn');
 const playModeBtn = document.getElementById('playModeBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 const progressBar = document.getElementById('progressBar');
@@ -798,9 +797,6 @@ function drawVisualizer() {
 }
 
 // 播放速度控制
-const SPEEDS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
-let currentSpeed = 1.0;
-
 speedBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     speedMenu.classList.toggle('show');
@@ -815,7 +811,6 @@ speedMenu.addEventListener('click', (e) => {
 });
 
 function setPlaybackSpeed(speed) {
-    currentSpeed = speed;
     audio.playbackRate = speed;
     speedLabel.textContent = speed === 1.0 ? '1.0x' : speed + 'x';
 
