@@ -381,24 +381,24 @@ function updateVolumeIcon(volume) {
 // 更新播放模式按钮图标
 function updatePlayModeButton() {
     const iconRepeat = playModeBtn.querySelector('.icon-repeat');
-    const iconRepeatOne = playModeBtn.querySelector('.icon-repeat-one');
+    const badge = playModeBtn.querySelector('.repeat-one-badge');
     const iconShuffle = playModeBtn.querySelector('.icon-shuffle');
 
     if (state.isShuffle) {
         iconRepeat.style.display = 'none';
-        iconRepeatOne.style.display = 'none';
+        badge.style.display = 'none';
         iconShuffle.style.display = 'block';
         playModeBtn.classList.add('active');
         playModeBtn.title = '随机播放';
     } else if (state.repeatMode === 1) {
-        iconRepeat.style.display = 'none';
-        iconRepeatOne.style.display = 'block';
+        iconRepeat.style.display = 'block';
+        badge.style.display = 'flex';
         iconShuffle.style.display = 'none';
         playModeBtn.classList.add('active');
         playModeBtn.title = '单曲循环';
     } else {
         iconRepeat.style.display = 'block';
-        iconRepeatOne.style.display = 'none';
+        badge.style.display = 'none';
         iconShuffle.style.display = 'none';
         playModeBtn.classList.remove('active');
         playModeBtn.title = '列表循环';
