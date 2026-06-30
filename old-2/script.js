@@ -116,7 +116,7 @@
         ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
         ctx.fillRect(0, 0, width, height);
         const remaining = [];
-        for (let p of particles) {
+        for (const p of particles) {
             if (p.update()) {
                 p.draw(ctx);
                 remaining.push(p);
@@ -156,15 +156,15 @@
 // ============================================
 // 音乐播放器核心逻辑
 // ============================================
-const p = document.getElementById("player");
-const list = document.getElementById("list");
-const statusDiv = document.getElementById("status");
-const search = document.getElementById("search");
-const loopBtn = document.getElementById("loop");
+const p = document.getElementById('player');
+const list = document.getElementById('list');
+const statusDiv = document.getElementById('status');
+const search = document.getElementById('search');
+const loopBtn = document.getElementById('loop');
 
 let songs = [];
 let idx = 0;
-let loopMode = "list";
+let loopMode = 'list';
 let isLoadingSongs = false;
 let isSeeking = false;
 let errorCount = 0;
@@ -173,7 +173,7 @@ const MAX_ERROR = 2;
 let playTimeout = null;
 let stallTimeout = null;
 
-let savedVol = parseFloat(localStorage.getItem("volume"));
+const savedVol = parseFloat(localStorage.getItem('volume'));
 p.volume = isNaN(savedVol) ? 0.7 : savedVol;
 
 window.onload = () => {
@@ -182,25 +182,25 @@ window.onload = () => {
 };
 
 function restoreLastSong() {
-    const last = localStorage.getItem("last");
+    const last = localStorage.getItem('last');
     if (last !== null && !isNaN(parseInt(last))) idx = parseInt(last);
 }
 
-document.addEventListener("keydown", (e) => {
+document.addEventListener('keydown', (e) => {
     if (search === document.activeElement) return;
-    if (e.code === "Space") {
+    if (e.code === 'Space') {
         e.preventDefault();
         if (songs.length === 0) return;
         p.paused ? p.play() : p.pause();
     }
-    if (e.code === "ArrowLeft" && songs.length > 0) prev();
-    if (e.code === "ArrowRight" && songs.length > 0) next();
+    if (e.code === 'ArrowLeft' && songs.length > 0) prev();
+    if (e.code === 'ArrowRight' && songs.length > 0) next();
 });
 
 search.oninput = () => {
     const kw = search.value.trim().toLowerCase();
-    document.querySelectorAll(".song-item").forEach((el, i) => {
-        const fullPath = songs[i] || "";
+    document.querySelectorAll('.song-item').forEach((el, i) => {
+        const fullPath = songs[i] || '';
         const numStr = String(i + 1);
         const match = !kw || numStr.includes(kw) || fullPath.toLowerCase().includes(kw);
         el.hidden = !match;
@@ -216,10 +216,10 @@ search.oninput = () => {
 async function loadSongs() {
     if (isLoadingSongs) return;
     isLoadingSongs = true;
-    const btns = document.querySelectorAll("button");
+    const btns = document.querySelectorAll('button');
     btns.forEach(btn => btn.disabled = true);
     list.innerHTML = '<div class="text-gray-400 text-center py-8">🎵 加载歌曲列表中...</div>';
-    statusDiv.textContent = "加载中...";
+    statusDiv.textContent = '加载中...';
 
     let retries = 2;
     let success = false;
@@ -227,14 +227,14 @@ async function loadSongs() {
         try {
             const controller = new AbortController();
             const id = setTimeout(() => controller.abort(), 8000);
-            const res = await fetch("/api/songs", { signal: controller.signal });
+            const res = await fetch('/api/songs', { signal: controller.signal });
             clearTimeout(id);
-            if (!res.ok) throw new Error("接口异常");
+            if (!res.ok) throw new Error('接口异常');
             const dirMap = await res.json();
             songs = [];
             for (const [dir, files] of Object.entries(dirMap)) {
                 for (const file of files) {
-                    songs.push(dir === "." ? file : dir + "/" + file);
+                    songs.push(dir === '.' ? file : dir + '/' + file);
                 }
             }
             renderList();
@@ -249,7 +249,7 @@ async function loadSongs() {
             retries--;
             statusDiv.textContent = `加载失败，剩余重试：${retries}`;
             if (retries < 0) {
-                statusDiv.textContent = "❌ 加载失败，请刷新页面";
+                statusDiv.textContent = '❌ 加载失败，请刷新页面';
                 list.innerHTML = '<div class="text-red-400 text-center py-6">加载失败，请检查网络</div>';
                 btns.forEach(btn => btn.disabled = true);
             }
@@ -259,14 +259,14 @@ async function loadSongs() {
 }
 
 function renderList() {
-    list.innerHTML = "";
+    list.innerHTML = '';
     if (songs.length === 0) {
         list.innerHTML = '<div class="text-gray-400 text-center py-6">暂无歌曲</div>';
         return;
     }
     songs.forEach((path, i) => {
-        const div = document.createElement("div");
-        div.className = "song-item px-4 py-3 cursor-pointer rounded-xl border-b border-gray-700/50 transition-all";
+        const div = document.createElement('div');
+        div.className = 'song-item px-4 py-3 cursor-pointer rounded-xl border-b border-gray-700/50 transition-all';
         div.innerHTML = `<span class="text-gray-400 mr-2">${i + 1}.</span>${escapeHtml(path)}`;
         div.onclick = () => play(i);
         list.appendChild(div);
@@ -274,10 +274,10 @@ function renderList() {
 }
 
 function highlightCurrentSong() {
-    document.querySelectorAll(".song-item").forEach((el, j) => {
-        el.classList.toggle("bg-green-500/20", j === idx);
-        el.classList.toggle("text-green-400", j === idx);
-        el.classList.toggle("border-green-500/30", j === idx);
+    document.querySelectorAll('.song-item').forEach((el, j) => {
+        el.classList.toggle('bg-green-500/20', j === idx);
+        el.classList.toggle('text-green-400', j === idx);
+        el.classList.toggle('border-green-500/30', j === idx);
     });
 }
 
@@ -292,32 +292,32 @@ function play(i) {
     p.src = path;
     p.load();
     playTimeout = setTimeout(() => {
-        if (p.readyState < 2) handlePlayError(new Error("加载超时"));
+        if (p.readyState < 2) handlePlayError(new Error('加载超时'));
     }, 5000);
     p.play().catch(err => {
-        if (err.name === "NotAllowedError") {
+        if (err.name === 'NotAllowedError') {
             clearPlayTimeouts();
-            statusDiv.textContent = "▶️ 请手动点击页面后播放";
+            statusDiv.textContent = '▶️ 请手动点击页面后播放';
         } else {
             handlePlayError(err);
         }
     });
-    p.addEventListener("stalled", onStalled);
-    p.addEventListener("playing", onPlaying);
+    p.addEventListener('stalled', onStalled);
+    p.addEventListener('playing', onPlaying);
     highlightCurrentSong();
     statusDiv.textContent = `🔄 正在加载：${path}`;
-    localStorage.setItem("last", idx);
+    localStorage.setItem('last', idx);
 }
 
 function handlePlayError(err) {
     clearPlayTimeouts();
     errorCount++;
-    const path = songs[idx] || "未知歌曲";
+    const path = songs[idx] || '未知歌曲';
     statusDiv.textContent = `⚠️ 播放失败 (${errorCount}/${MAX_ERROR})：${path}`;
-    console.warn("播放错误:", err);
+    console.warn('播放错误:', err);
     if (errorCount >= MAX_ERROR) {
         p.pause();
-        statusDiv.textContent = "⏹️ 连续失败，已停止播放";
+        statusDiv.textContent = '⏹️ 连续失败，已停止播放';
         errorCount = 0;
     } else {
         setTimeout(() => {
@@ -332,13 +332,13 @@ function handlePlayError(err) {
 function clearPlayTimeouts() {
     if (playTimeout) clearTimeout(playTimeout);
     if (stallTimeout) clearTimeout(stallTimeout);
-    p.removeEventListener("stalled", onStalled);
-    p.removeEventListener("playing", onPlaying);
+    p.removeEventListener('stalled', onStalled);
+    p.removeEventListener('playing', onPlaying);
 }
 
 function onStalled() {
     stallTimeout = setTimeout(() => {
-        if (p.readyState < 2 && !p.ended && !p.paused) handlePlayError(new Error("下载停滞"));
+        if (p.readyState < 2 && !p.ended && !p.paused) handlePlayError(new Error('下载停滞'));
     }, 10000);
 }
 
@@ -348,21 +348,21 @@ function onPlaying() {
     if (songs[idx]) statusDiv.textContent = `🎶 正在播放：${songs[idx]}`;
 }
 
-p.addEventListener("seeking", () => isSeeking = true);
-p.addEventListener("seeked", () => isSeeking = false);
-p.addEventListener("pause", () => {
+p.addEventListener('seeking', () => isSeeking = true);
+p.addEventListener('seeked', () => isSeeking = false);
+p.addEventListener('pause', () => {
     if (!isSeeking && songs[idx]) statusDiv.textContent = `⏸️ 已暂停：${songs[idx]}`;
 });
-p.addEventListener("ended", () => {
-    if (loopMode === "single") {
+p.addEventListener('ended', () => {
+    if (loopMode === 'single') {
         p.currentTime = 0;
         p.play().catch(e => handlePlayError(e));
     } else {
         next();
     }
 });
-p.addEventListener("volumechange", () => localStorage.setItem("volume", p.volume));
-p.addEventListener("error", (e) => {
+p.addEventListener('volumechange', () => localStorage.setItem('volume', p.volume));
+p.addEventListener('error', (e) => {
     if (p.error && (p.error.code === MediaError.MEDIA_ERR_NETWORK ||
         p.error.code === MediaError.MEDIA_ERR_DECODE ||
         p.error.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED)) {
@@ -373,7 +373,7 @@ p.addEventListener("error", (e) => {
 function prev() {
     if (songs.length === 0) return;
     let newIdx;
-    if (loopMode === "random") newIdx = Math.floor(Math.random() * songs.length);
+    if (loopMode === 'random') newIdx = Math.floor(Math.random() * songs.length);
     else newIdx = (idx - 1 + songs.length) % songs.length;
     play(newIdx);
 }
@@ -381,19 +381,19 @@ function prev() {
 function next() {
     if (songs.length === 0) return;
     let newIdx;
-    if (loopMode === "random") newIdx = Math.floor(Math.random() * songs.length);
+    if (loopMode === 'random') newIdx = Math.floor(Math.random() * songs.length);
     else newIdx = (idx + 1) % songs.length;
     play(newIdx);
 }
 
 function toggleLoop() {
-    if (loopMode === "list") { loopMode = "single"; loopBtn.textContent = "🔂 单曲循环"; }
-    else if (loopMode === "single") { loopMode = "random"; loopBtn.textContent = "🎲 随机播放"; }
-    else { loopMode = "list"; loopBtn.textContent = "🔁 列表循环"; }
+    if (loopMode === 'list') { loopMode = 'single'; loopBtn.textContent = '🔂 单曲循环'; }
+    else if (loopMode === 'single') { loopMode = 'random'; loopBtn.textContent = '🎲 随机播放'; }
+    else { loopMode = 'list'; loopBtn.textContent = '🔁 列表循环'; }
 }
 
 function escapeHtml(str) {
-    if (!str) return "";
+    if (!str) return '';
     return str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m] || m));
 }
 
@@ -403,9 +403,9 @@ function escapeRegex(str) {
 
 function renderHighlightLine(num, fullPath, kw) {
     const safeKw = escapeRegex(kw);
-    const reg = new RegExp(`(${safeKw})`, "gi");
-    const lastSlash = Math.max(fullPath.lastIndexOf("/"), fullPath.lastIndexOf("\\"));
-    let dirPart = "", filePart = fullPath;
+    const reg = new RegExp(`(${safeKw})`, 'gi');
+    const lastSlash = Math.max(fullPath.lastIndexOf('/'), fullPath.lastIndexOf('\\'));
+    let dirPart = '', filePart = fullPath;
     if (lastSlash > -1) { dirPart = fullPath.substring(0, lastSlash + 1); filePart = fullPath.substring(lastSlash + 1); }
     const highlightDir = dirPart.replace(reg, '<span class="text-green-400 font-semibold">$1</span>');
     const highlightFile = filePart.replace(reg, '<span class="text-yellow-400 font-semibold">$1</span>');

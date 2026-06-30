@@ -261,7 +261,8 @@ async function loadCover(folder, song) {
             albumArt.innerHTML = `<img src="${currentCoverUrl}" alt="封面" style="width:100%;height:100%;object-fit:cover;border-radius:24px;">`;
             return;
         }
-    } catch {
+    } catch (err) {
+        console.error('加载封面失败:', err);
     }
 
     albumArt.innerHTML = '<ion-icon name="musical-notes"></ion-icon>';
@@ -292,7 +293,8 @@ async function loadMeta(folder, song) {
                 totalTimeEl.textContent = formatTime(meta.duration);
             }
         }
-    } catch {
+    } catch (err) {
+        console.error('加载元数据失败:', err);
     }
 }
 
@@ -1016,28 +1018,28 @@ function handleKeydown(e) {
     if (e.target.tagName === 'INPUT') return;
 
     switch (e.code) {
-        case 'Space':
-            e.preventDefault();
-            playBtn.click();
-            break;
-        case 'ArrowLeft':
-            audio.currentTime = Math.max(0, audio.currentTime - 5);
-            break;
-        case 'ArrowRight':
-            audio.currentTime = Math.min(audio.duration, audio.currentTime + 5);
-            break;
-        case 'ArrowUp':
-            e.preventDefault();
-            volumeSlider.value = Math.min(100, parseInt(volumeSlider.value) + 5);
-            audio.volume = volumeSlider.value / 100;
-            updateVolumeIcon(parseInt(volumeSlider.value));
-            break;
-        case 'ArrowDown':
-            e.preventDefault();
-            volumeSlider.value = Math.max(0, parseInt(volumeSlider.value) - 5);
-            audio.volume = volumeSlider.value / 100;
-            updateVolumeIcon(parseInt(volumeSlider.value));
-            break;
+    case 'Space':
+        e.preventDefault();
+        playBtn.click();
+        break;
+    case 'ArrowLeft':
+        audio.currentTime = Math.max(0, audio.currentTime - 5);
+        break;
+    case 'ArrowRight':
+        audio.currentTime = Math.min(audio.duration, audio.currentTime + 5);
+        break;
+    case 'ArrowUp':
+        e.preventDefault();
+        volumeSlider.value = Math.min(100, parseInt(volumeSlider.value) + 5);
+        audio.volume = volumeSlider.value / 100;
+        updateVolumeIcon(parseInt(volumeSlider.value));
+        break;
+    case 'ArrowDown':
+        e.preventDefault();
+        volumeSlider.value = Math.max(0, parseInt(volumeSlider.value) - 5);
+        audio.volume = volumeSlider.value / 100;
+        updateVolumeIcon(parseInt(volumeSlider.value));
+        break;
     }
 }
 document.addEventListener('keydown', handleKeydown);

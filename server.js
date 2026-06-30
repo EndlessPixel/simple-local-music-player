@@ -2,7 +2,7 @@ import { createServer } from 'http';
 import https from 'https';
 import { createReadStream, statSync } from 'fs';
 import { promises as fs } from 'fs';
-import { join, resolve, extname, dirname, normalize, sep } from 'path';
+import { join, resolve, extname, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { parse } from 'url';
 import { parseFile } from 'music-metadata';
@@ -146,7 +146,7 @@ const MIME_MAP = {
     '.html': 'text/html;charset=utf-8',
     '.js': 'application/javascript;charset=utf-8',
     '.css': 'text/css;charset=utf-8',
-    '.svg': 'image/svg+xml',
+    '.svg': 'image/svg+xml'
 };
 
 function getMime(file) {
@@ -214,7 +214,7 @@ function sendFile(res, filePath, rangeHeader, method, req) {
                 'Accept-Ranges': 'bytes'
             });
             const stream = createReadStream(filePath);
-            stream.on('error', (err) => {
+            stream.on('error', () => {
                 if (!res.headersSent) {
                     res.writeHead(500).end('Stream Error');
                 } else {
@@ -239,7 +239,7 @@ function sendFile(res, filePath, rangeHeader, method, req) {
             'Accept-Ranges': 'bytes'
         });
         const stream = createReadStream(filePath, { start: r.start, end: r.end });
-        stream.on('error', (err) => {
+        stream.on('error', () => {
             if (!res.headersSent) {
                 res.writeHead(500).end('Stream Error');
             } else {
@@ -248,7 +248,7 @@ function sendFile(res, filePath, rangeHeader, method, req) {
         });
         req.on('close', () => stream.destroy());
         stream.pipe(res);
-    } catch (err) {
+    } catch {
         if (!res.headersSent) {
             res.writeHead(500).end('Internal Server Error');
         }
@@ -277,8 +277,7 @@ async function getCoverFromFile(filePath) {
         // 没有封面，缓存 null
         coverCache.set(filePath, { data: null, mime: null, lastUsed: Date.now(), size: 0 });
         return null;
-    } catch (err) {
-        // 解析失败，缓存 null
+    } catch {
         coverCache.set(filePath, { data: null, mime: null, lastUsed: Date.now(), size: 0 });
         return null;
     }
@@ -303,7 +302,7 @@ async function getMetaFromFile(filePath) {
         metaCacheSize += size;
         metaCacheSize = pruneCache(metaCache, metaCacheSize, META_MAX_SIZE, META_MAX_ENTRIES);
         return data;
-    } catch (err) {
+    } catch {
         const empty = { artist: null, title: null, duration: null };
         const size = JSON.stringify(empty).length;
         metaCache.set(filePath, { data: empty, lastUsed: Date.now(), size });
@@ -462,8 +461,8 @@ const server = createServer(async (req, res) => {
                         path: '/api/songs',
                         description: '获取音乐列表，返回所有文件夹和歌曲',
                         response: {
-                            "folder1": ["song1.mp3", "song2.flac"],
-                            "folder2": ["song3.mp3"]
+                            'folder1': ['song1.mp3', 'song2.flac'],
+                            'folder2': ['song3.mp3']
                         }
                     },
                     {
