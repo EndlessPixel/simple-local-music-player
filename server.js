@@ -402,6 +402,27 @@ const server = createServer(async (req, res) => {
             return;
         }
 
+        // ---------- Ionicons 代理 ----------
+        if (pathname.startsWith('/ionicons/')) {
+            const targetUrl = `https://unpkg.com/ionicons@7.1.0/dist/ionicons${pathname}`;
+            https.get(targetUrl, {
+                rejectUnauthorized: false
+            }, (proxyRes) => {
+                const headers = {};
+                for (const [key, value] of Object.entries(proxyRes.headers)) {
+                    if (key.toLowerCase() !== 'set-cookie') {
+                        headers[key] = value;
+                    }
+                }
+                res.writeHead(proxyRes.statusCode, headers);
+                proxyRes.pipe(res);
+            }).on('error', (err) => {
+                console.error('Ionicons proxy error:', err);
+                res.writeHead(500).end('Proxy Error');
+            });
+            return;
+        }
+
         // ---------- 更新日志代理 ----------
         if (pathname.startsWith('/api/commits')) {
             const queryStr = pathname.slice('/api/commits'.length) || '';
