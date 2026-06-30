@@ -109,7 +109,8 @@
                         </button>
                         <button class="control-btn" id="playModeBtn" title="播放模式">
                             <ion-icon class="icon-repeat" name="repeat" size="small"></ion-icon>
-                            <ion-icon class="icon-repeat-one" name="repeat-one" size="small" style="display:none;"></ion-icon>
+                            <ion-icon class="icon-repeat-one" name="repeat" size="small" style="display:none;"></ion-icon>
+                            <span class="repeat-one-badge" style="display:none;">1</span>
                             <ion-icon class="icon-shuffle" name="shuffle" size="small" style="display:none;"></ion-icon>
                         </button>
                         <button class="control-btn speed-btn" id="speedBtn" title="播放速度">
@@ -145,7 +146,7 @@
         </main>
     </div>
 
-    <audio id="audioPlayer">
+    <audio id="audioPlayer"></audio>
 
     <div class="changelog-panel" id="changelogPanel">
         <div class="changelog-header">
