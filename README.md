@@ -2,6 +2,8 @@
 
 基于 Node.js 的本地音乐播放器，支持从音频文件提取封面和元数据。
 
+> 在线体验：http://music.epmc.qzz.io:18250/
+
 ## 功能特性
 
 - 🎵 **音乐播放** - 支持 MP3、FLAC、WAV、OGG、M4A、AAC、WMA 等格式
