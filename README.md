@@ -2,7 +2,7 @@
 
 基于 Node.js 的本地音乐播放器，支持从音频文件提取封面和元数据。
 
-> 在线体验：http://music.epmc.qzz.io:18250/
+> 在线体验：https://music.epmc.qzz.io/
 
 ## 功能特性
 
