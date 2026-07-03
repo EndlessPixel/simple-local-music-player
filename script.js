@@ -489,6 +489,45 @@ downloadBtn.addEventListener('click', () => {
     link.click();
 });
 
+// 分享按钮
+const shareBtn = document.getElementById('shareBtn');
+
+shareBtn.addEventListener('click', () => {
+    if (state.currentIndex === -1) return;
+
+    const { song } = state.flatSongs[state.currentIndex];
+    const shareUrl = `${window.location.origin}${window.location.pathname}?song=${encodeURIComponent(song)}`;
+
+    navigator.clipboard.writeText(shareUrl).then(() => {
+        showToast('分享链接已复制到剪贴板');
+    }).catch(() => {
+        // 降级方案：创建临时 input 元素
+        const input = document.createElement('input');
+        input.value = shareUrl;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+        showToast('分享链接已复制到剪贴板');
+    });
+});
+
+// Toast 通知
+function showToast(message) {
+    let toast = document.querySelector('.toast-notification');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.className = 'toast-notification';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.classList.add('show');
+    clearTimeout(toast._hideTimer);
+    toast._hideTimer = setTimeout(() => {
+        toast.classList.remove('show');
+    }, 2500);
+}
+
 progressBar.addEventListener('click', (e) => {
     const rect = progressBar.getBoundingClientRect();
     const percent = (e.clientX - rect.left) / rect.width;
