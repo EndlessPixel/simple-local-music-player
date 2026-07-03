@@ -398,6 +398,28 @@ body {
     letter-spacing: normal;
 }
 
+.auto-refresh-toggle {
+    margin-left: 12px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.06);
+    color: var(--text-muted);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.auto-refresh-toggle:hover {
+    background: rgba(255,255,255,0.1);
+}
+
+.auto-refresh-toggle.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--text);
+}
+
 .song-list {
     flex: 1;
     overflow-y: auto;

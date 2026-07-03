@@ -1,3 +1,4 @@
+const AUTO_REFRESH_INTERVAL = 60;
 const state = {
     songs: {},
     flatSongs: [],
@@ -6,8 +7,9 @@ const state = {
     isShuffle: false,
     repeatMode: 0,
     collapsedFolders: new Set(),
-    refreshCountdown: 30,
+    refreshCountdown: AUTO_REFRESH_INTERVAL,
     refreshInterval: null,
+    autoRefreshEnabled: true,
     searchHistory: [],
     lastSearchTerm: ''
 };
@@ -48,12 +50,19 @@ async function init() {
                 state.collapsedFolders = new Set();
             }
         }
+        const savedAutoRefresh = localStorage.getItem('musicAutoRefreshEnabled');
+        if (savedAutoRefresh !== null) {
+            state.autoRefreshEnabled = savedAutoRefresh === '1';
+        }
         loadSearchHistory();
         const res = await fetch('/api/songs');
         state.songs = await res.json();
         renderSongList(state.songs);
         applyShareLinkFromQuery();
-        startAutoRefresh();
+        updateAutoRefreshUi();
+        if (state.autoRefreshEnabled) {
+            startAutoRefresh();
+        }
         const savedVolume = localStorage.getItem('musicVolume');
         const volume = savedVolume ? parseInt(savedVolume) : 80;
         volumeSlider.value = volume;
@@ -163,6 +172,7 @@ function renderSongList(songs, filter = '') {
     songCount.innerHTML = `
                 <span>共 ${totalSongs} 首歌曲</span>
                 <span class="auto-refresh" id="autoRefresh">自动刷新: ${state.refreshCountdown}s</span>
+                <button type="button" class="auto-refresh-toggle" id="autoRefreshToggleBtn" aria-pressed="false" title="开启自动刷新">自动刷新</button>
             `;
 
     if (totalSongs === 0) {
@@ -210,25 +220,88 @@ function updateActiveItem(currentSong) {
 
 // 自动刷新
 function startAutoRefresh() {
-    if (state.refreshInterval) return;
+    if (!state.autoRefreshEnabled || state.refreshInterval) return;
     state.refreshInterval = setInterval(() => {
         state.refreshCountdown--;
-        const autoRefreshEl = document.getElementById('autoRefresh');
-        if (autoRefreshEl) {
-            autoRefreshEl.textContent = `自动刷新: ${state.refreshCountdown}s`;
-        }
         if (state.refreshCountdown <= 0) {
-            state.refreshCountdown = 30;
+            state.refreshCountdown = AUTO_REFRESH_INTERVAL;
             refreshSongList();
         }
+        updateAutoRefreshUi();
     }, 1000);
+    updateAutoRefreshUi();
+}
+
+function stopAutoRefresh() {
+    if (state.refreshInterval) {
+        clearInterval(state.refreshInterval);
+        state.refreshInterval = null;
+    }
+    updateAutoRefreshUi();
+}
+
+function setAutoRefreshEnabled(enabled) {
+    state.autoRefreshEnabled = enabled;
+    localStorage.setItem('musicAutoRefreshEnabled', enabled ? '1' : '0');
+    if (enabled) {
+        if (!state.refreshInterval) {
+            state.refreshCountdown = AUTO_REFRESH_INTERVAL;
+            startAutoRefresh();
+        }
+    } else {
+        stopAutoRefresh();
+    }
+}
+
+function toggleAutoRefresh() {
+    setAutoRefreshEnabled(!state.autoRefreshEnabled);
+}
+
+function updateAutoRefreshUi() {
+    const autoRefreshEl = document.getElementById('autoRefresh');
+    if (autoRefreshEl) {
+        if (state.autoRefreshEnabled) {
+            autoRefreshEl.textContent = `自动刷新: ${state.refreshCountdown}s`;
+        } else {
+            autoRefreshEl.textContent = '自动刷新: 已关闭';
+        }
+    }
+
+    const toggleBtn = document.getElementById('autoRefreshToggleBtn');
+    if (toggleBtn) {
+        toggleBtn.classList.toggle('active', state.autoRefreshEnabled);
+        toggleBtn.setAttribute('aria-pressed', String(state.autoRefreshEnabled));
+        toggleBtn.title = state.autoRefreshEnabled ? '关闭自动刷新' : '开启自动刷新';
+    }
+}
+
+function areSongMapsEqual(oldMap, newMap) {
+    const oldKeys = Object.keys(oldMap).sort();
+    const newKeys = Object.keys(newMap).sort();
+    if (oldKeys.length !== newKeys.length) return false;
+    for (let i = 0; i < oldKeys.length; i++) {
+        if (oldKeys[i] !== newKeys[i]) return false;
+        const oldList = oldMap[oldKeys[i]];
+        const newList = newMap[newKeys[i]];
+        if (!Array.isArray(oldList) || !Array.isArray(newList)) return false;
+        if (oldList.length !== newList.length) return false;
+        for (let j = 0; j < oldList.length; j++) {
+            if (oldList[j] !== newList[j]) return false;
+        }
+    }
+    return true;
 }
 
 async function refreshSongList() {
     try {
         const res = await fetch('/api/songs');
-        state.songs = await res.json();
+        const newSongs = await res.json();
+        if (areSongMapsEqual(state.songs, newSongs)) {
+            return;
+        }
+        state.songs = newSongs;
         renderSongList(state.songs, searchInput.value);
+        updateAutoRefreshUi();
     } catch (err) {
         console.error('刷新失败:', err);
     }
@@ -743,11 +816,21 @@ function escapeHtml(text) {
 
 clearHistoryBtn.addEventListener('click', clearAllSearchHistory);
 
+document.addEventListener('click', (e) => {
+    const toggleTarget = e.target.closest('#autoRefreshToggleBtn');
+    if (toggleTarget) {
+        toggleAutoRefresh();
+    }
+});
+
 refreshBtn.addEventListener('click', async () => {
     refreshBtn.classList.add('loading');
     try {
         await refreshSongList();
-        state.refreshCountdown = 30;
+        if (state.autoRefreshEnabled) {
+            state.refreshCountdown = AUTO_REFRESH_INTERVAL;
+            updateAutoRefreshUi();
+        }
     } catch (err) {
         console.error('刷新失败:', err);
     } finally {
