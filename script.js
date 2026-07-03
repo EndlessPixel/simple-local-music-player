@@ -516,7 +516,10 @@ function applyShareLinkFromQuery() {
         return item.song === song;
     });
 
-    if (index === -1) return;
+    if (index === -1) {
+        showToast('分享的歌曲不存在或已被删除');
+        return;
+    }
     playSong(index);
 }
 
