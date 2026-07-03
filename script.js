@@ -85,9 +85,36 @@ async function init() {
     }
 }
 
+// 安全播放：确保返回的 Promise 始终有 catch，避免未捕获拒绝
+function safePlay() {
+    try {
+        const p = audio.play();
+        if (p && typeof p.then === 'function') {
+            p.catch(() => {});
+        }
+        return p;
+    } catch (e) {
+        return Promise.reject(e);
+    }
+}
+
+// 捕获未处理的 Promise 拒绝（例如浏览器阻止自动播放时的 NotAllowedError），并给出友好提示
+window.addEventListener('unhandledrejection', (ev) => {
+    try {
+        const reason = ev.reason;
+        if (reason && (reason.name === 'NotAllowedError' || reason.message && reason.message.includes('play() failed'))) {
+            showToast('自动播放被浏览器阻止，需要您的交互以开始播放');
+            ev.preventDefault();
+            return;
+        }
+    } catch (e) {
+        // ignore
+    }
+    console.error('Unhandled rejection:', ev.reason);
+});
+
 // 渲染歌曲列表
 function renderSongList(songs, filter = '') {
-    const currentScroll = songList.scrollTop;
     let currentSong = null;
     if (state.currentIndex >= 0 && state.flatSongs[state.currentIndex]) {
         const s = state.flatSongs[state.currentIndex];
@@ -388,7 +415,7 @@ function playSong(index) {
 
     // 尝试播放，处理浏览器阻止自动播放的情况
     try {
-        const playPromise = audio.play();
+            const playPromise = safePlay();
         if (playPromise && typeof playPromise.then === 'function') {
             playPromise.then(() => {
                 state.isPlaying = true;
@@ -409,7 +436,7 @@ function playSong(index) {
                 state.pendingAutoPlay = true;
                 showToast('自动播放被浏览器阻止，点击任意位置继续播放');
                 const resume = function () {
-                    audio.play().then(() => {
+                    safePlay().then(() => {
                         state.pendingAutoPlay = false;
                         state.pendingListener = null;
                         state.isPlaying = true;
@@ -568,7 +595,7 @@ playBtn.addEventListener('click', () => {
         audio.pause();
         state.isPlaying = false;
     } else {
-        audio.play().then(() => {
+        safePlay().then(() => {
             state.isPlaying = true;
         }).catch(() => {
             state.isPlaying = false;
@@ -659,7 +686,7 @@ function attemptAutoPlayOnLoad() {
     // 优先尝试静音播放（静音通常被允许），以提高自动播放成功率
     const prevMuted = audio.muted;
     audio.muted = true;
-    audio.play().then(() => {
+    safePlay().then(() => {
         // 静音播放成功，保持静音并提示用户可以取消静音
         state.isPlaying = true;
         updatePlayButton();
@@ -931,7 +958,7 @@ function handleAudioLoadedMetadata() {
 function handleAudioEnded() {
     if (state.repeatMode === 1) {
         audio.currentTime = 0;
-        audio.play().catch(() => {
+        safePlay().catch(() => {
             showToast('播放被浏览器阻止，请点击播放按钮以继续');
         });
     } else if (state.isShuffle || state.currentIndex < state.flatSongs.length - 1) {
