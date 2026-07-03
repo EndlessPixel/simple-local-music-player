@@ -70,8 +70,6 @@ async function init() {
         volumeSlider.value = volume;
         audio.volume = volume / 100;
         updateVolumeIcon(volume);
-        // 在页面渲染完成后尝试自动播放一次（静音/回退逻辑在 attemptAutoPlayOnLoad 中实现）
-        setTimeout(attemptAutoPlayOnLoad, 300);
     } catch (err) {
         songList.innerHTML = `
                     <div class="empty-state">
@@ -413,52 +411,10 @@ function playSong(index) {
 
     audio.src = encodeURI(path);
 
-    // 尝试播放，处理浏览器阻止自动播放的情况
-    try {
-            const playPromise = safePlay();
-        if (playPromise && typeof playPromise.then === 'function') {
-            playPromise.then(() => {
-                state.isPlaying = true;
-                updatePlayButton();
-                albumArt.classList.add('playing');
-                // 如果此前存在挂起的自动播放恢复监听，移除
-                if (state.pendingAutoPlay) {
-                    state.pendingAutoPlay = false;
-                    if (state.pendingListener) {
-                        document.removeEventListener('click', state.pendingListener, true);
-                        state.pendingListener = null;
-                    }
-                }
-            }).catch(() => {
-                // 自动播放被浏览器阻止，等待用户交互恢复
-                state.isPlaying = false;
-                updatePlayButton();
-                state.pendingAutoPlay = true;
-                showToast('自动播放被浏览器阻止，点击任意位置继续播放');
-                const resume = function () {
-                    safePlay().then(() => {
-                        state.pendingAutoPlay = false;
-                        state.pendingListener = null;
-                        state.isPlaying = true;
-                        updatePlayButton();
-                        albumArt.classList.add('playing');
-                    }).catch(() => {
-                        // 如果再次失败，保持挂起状态不处理
-                    });
-                };
-                state.pendingListener = resume;
-                document.addEventListener('click', resume, { once: true, capture: true });
-            });
-        } else {
-            state.isPlaying = true;
-            updatePlayButton();
-            albumArt.classList.add('playing');
-        }
-    } catch (err) {
-        // 在极少数环境下 audio.play() 可能抛出同步异常
-        state.isPlaying = false;
-        updatePlayButton();
-    }
+    // 只加载音频，不自动播放（保持暂停状态，等待用户交互）
+    state.isPlaying = false;
+    updatePlayButton();
+    albumArt.classList.remove('playing');
 
     loadCover(folder, song);
     loadMeta(folder, song);
@@ -591,6 +547,13 @@ function getPrevIndex() {
 playBtn.addEventListener('click', () => {
     if (state.currentIndex === -1 && state.flatSongs.length > 0) {
         playSong(0);
+        safePlay().then(() => {
+            state.isPlaying = true;
+            updatePlayButton();
+        }).catch(() => {
+            state.isPlaying = false;
+            showToast('播放被浏览器阻止，请点击页面任意位置或播放按钮以继续');
+        });
     } else if (state.isPlaying) {
         audio.pause();
         state.isPlaying = false;
