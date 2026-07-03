@@ -10,6 +10,8 @@ const state = {
     refreshCountdown: AUTO_REFRESH_INTERVAL,
     refreshInterval: null,
     autoRefreshEnabled: true,
+    pendingAutoPlay: false,
+    pendingListener: null,
     searchHistory: [],
     lastSearchTerm: ''
 };
@@ -381,9 +383,54 @@ function playSong(index) {
     const path = folder === '.' ? `/${song}` : `/${folder}/${song}`;
 
     audio.src = encodeURI(path);
-    audio.play();
-    state.isPlaying = true;
-    updatePlayButton();
+
+    // 尝试播放，处理浏览器阻止自动播放的情况
+    try {
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.then === 'function') {
+            playPromise.then(() => {
+                state.isPlaying = true;
+                updatePlayButton();
+                albumArt.classList.add('playing');
+                // 如果此前存在挂起的自动播放恢复监听，移除
+                if (state.pendingAutoPlay) {
+                    state.pendingAutoPlay = false;
+                    if (state.pendingListener) {
+                        document.removeEventListener('click', state.pendingListener, true);
+                        state.pendingListener = null;
+                    }
+                }
+            }).catch(() => {
+                // 自动播放被浏览器阻止，等待用户交互恢复
+                state.isPlaying = false;
+                updatePlayButton();
+                state.pendingAutoPlay = true;
+                showToast('自动播放被浏览器阻止，点击任意位置继续播放');
+                const resume = function () {
+                    audio.play().then(() => {
+                        state.pendingAutoPlay = false;
+                        state.pendingListener = null;
+                        state.isPlaying = true;
+                        updatePlayButton();
+                        albumArt.classList.add('playing');
+                    }).catch(() => {
+                        // 如果再次失败，保持挂起状态不处理
+                    });
+                };
+                state.pendingListener = resume;
+                document.addEventListener('click', resume, { once: true, capture: true });
+            });
+        } else {
+            state.isPlaying = true;
+            updatePlayButton();
+            albumArt.classList.add('playing');
+        }
+    } catch (err) {
+        // 在极少数环境下 audio.play() 可能抛出同步异常
+        state.isPlaying = false;
+        updatePlayButton();
+    }
+
     loadCover(folder, song);
     loadMeta(folder, song);
 
@@ -393,7 +440,6 @@ function playSong(index) {
     currentTitleEl.textContent = song.replace(/\.[^.]+$/, '');
     const pathDisplay = folder === '.' ? song : `${folder}/${song}`;
     currentPathEl.textContent = pathDisplay;
-    albumArt.classList.add('playing');
 }
 
 // 滚动到指定文件夹
@@ -1229,6 +1275,13 @@ function cleanup() {
     if (state.refreshInterval) {
         clearInterval(state.refreshInterval);
         state.refreshInterval = null;
+    }
+    if (state.pendingListener) {
+        try {
+            document.removeEventListener('click', state.pendingListener, true);
+        } catch {}
+        state.pendingListener = null;
+        state.pendingAutoPlay = false;
     }
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('click', handleDocumentClick);
