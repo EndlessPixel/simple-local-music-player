@@ -330,6 +330,8 @@ const server = createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
     res.setHeader('Access-Control-Allow-Headers', '*');
+    // Content Security Policy: 允许本域脚本、样式、图片及与 https: 源的连接（本地部署可根据需要放宽/收紧）
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; connect-src 'self' https:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' https:; media-src 'self' blob: data:");
 
     if (req.method === 'OPTIONS') {
         res.writeHead(204).end();

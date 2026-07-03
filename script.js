@@ -652,28 +652,23 @@ function attemptAutoPlayOnLoad() {
     // 如果已经在播放则不重复尝试
     if (!audio.paused && !audio.ended) return;
 
-    // 直接尝试播放
+    // 优先尝试静音播放（静音通常被允许），以提高自动播放成功率
+    const prevMuted = audio.muted;
+    audio.muted = true;
     audio.play().then(() => {
+        // 静音播放成功，保持静音并提示用户可以取消静音
         state.isPlaying = true;
         updatePlayButton();
         albumArt.classList.add('playing');
+        showToast('已静音播放（浏览器策略）。点击取消静音以恢复声音');
     }).catch(() => {
-        // 自动播放被阻止，尝试静音回退
-        const prevMuted = audio.muted;
-        audio.muted = true;
-        audio.play().then(() => {
-            // 静音播放成功，恢复静音状态为之前的值
-            audio.muted = prevMuted;
-            state.isPlaying = true;
-            updatePlayButton();
-            albumArt.classList.add('playing');
-        }).catch(() => {
-            // 静音回退也失败，尝试触发播放按钮的点击（注意：合成事件可能不被视为用户手势）
-            try {
-                playBtn.click();
-            } catch (e) {}
-            showToast('浏览器阻止了自动播放，请点击播放按钮以继续');
-        });
+        // 静音播放也被阻止，尝试触发播放按钮作为最后回退，并提示用户
+        try {
+            playBtn.click();
+        } catch (e) {}
+        showToast('浏览器阻止了自动播放，请点击播放按钮以继续');
+        // 恢复原始静音状态
+        audio.muted = prevMuted;
     });
 }
 
