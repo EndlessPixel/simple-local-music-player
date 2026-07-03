@@ -568,8 +568,12 @@ playBtn.addEventListener('click', () => {
         audio.pause();
         state.isPlaying = false;
     } else {
-        audio.play();
-        state.isPlaying = true;
+        audio.play().then(() => {
+            state.isPlaying = true;
+        }).catch(() => {
+            state.isPlaying = false;
+            showToast('播放被浏览器阻止，请点击页面任意位置或播放按钮以继续');
+        });
     }
     updatePlayButton();
 });
@@ -927,7 +931,9 @@ function handleAudioLoadedMetadata() {
 function handleAudioEnded() {
     if (state.repeatMode === 1) {
         audio.currentTime = 0;
-        audio.play();
+        audio.play().catch(() => {
+            showToast('播放被浏览器阻止，请点击播放按钮以继续');
+        });
     } else if (state.isShuffle || state.currentIndex < state.flatSongs.length - 1) {
         playSong(getNextIndex());
     } else {
