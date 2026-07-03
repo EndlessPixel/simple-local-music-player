@@ -70,6 +70,8 @@ async function init() {
         volumeSlider.value = volume;
         audio.volume = volume / 100;
         updateVolumeIcon(volume);
+        // 在页面渲染完成后尝试自动播放一次（静音/回退逻辑在 attemptAutoPlayOnLoad 中实现）
+        setTimeout(attemptAutoPlayOnLoad, 300);
     } catch (err) {
         songList.innerHTML = `
                     <div class="empty-state">
@@ -640,6 +642,39 @@ function applyShareLinkFromQuery() {
         return;
     }
     playSong(index);
+}
+
+// 页面加载后尝试自动播放：先直接 play()，若被阻止则尝试静音播放回退，再尝试触发播放按钮点击
+function attemptAutoPlayOnLoad() {
+    // 只有当有当前选中项才尝试
+    if (state.currentIndex === -1) return;
+
+    // 如果已经在播放则不重复尝试
+    if (!audio.paused && !audio.ended) return;
+
+    // 直接尝试播放
+    audio.play().then(() => {
+        state.isPlaying = true;
+        updatePlayButton();
+        albumArt.classList.add('playing');
+    }).catch(() => {
+        // 自动播放被阻止，尝试静音回退
+        const prevMuted = audio.muted;
+        audio.muted = true;
+        audio.play().then(() => {
+            // 静音播放成功，恢复静音状态为之前的值
+            audio.muted = prevMuted;
+            state.isPlaying = true;
+            updatePlayButton();
+            albumArt.classList.add('playing');
+        }).catch(() => {
+            // 静音回退也失败，尝试触发播放按钮的点击（注意：合成事件可能不被视为用户手势）
+            try {
+                playBtn.click();
+            } catch (e) {}
+            showToast('浏览器阻止了自动播放，请点击播放按钮以继续');
+        });
+    });
 }
 
 shareBtn.addEventListener('click', () => {
