@@ -52,6 +52,7 @@ async function init() {
         const res = await fetch('/api/songs');
         state.songs = await res.json();
         renderSongList(state.songs);
+        applyShareLinkFromQuery();
         startAutoRefresh();
         const savedVolume = localStorage.getItem('musicVolume');
         const volume = savedVolume ? parseInt(savedVolume) : 80;
@@ -492,11 +493,38 @@ downloadBtn.addEventListener('click', () => {
 // 分享按钮
 const shareBtn = document.getElementById('shareBtn');
 
+function buildShareUrl(folder, song) {
+    const params = new URLSearchParams();
+    params.set('song', song);
+    if (folder && folder !== '.') {
+        params.set('folder', folder);
+    }
+    return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+}
+
+function applyShareLinkFromQuery() {
+    const params = new URLSearchParams(window.location.search);
+    const song = params.get('song');
+    if (!song) return;
+
+    const folder = params.get('folder');
+    const normalizedFolder = folder === '' ? '.' : folder;
+    const index = state.flatSongs.findIndex(item => {
+        if (folder) {
+            return item.song === song && item.folder === normalizedFolder;
+        }
+        return item.song === song;
+    });
+
+    if (index === -1) return;
+    playSong(index);
+}
+
 shareBtn.addEventListener('click', () => {
     if (state.currentIndex === -1) return;
 
-    const { song } = state.flatSongs[state.currentIndex];
-    const shareUrl = `${window.location.origin}${window.location.pathname}?song=${encodeURIComponent(song)}`;
+    const { folder, song } = state.flatSongs[state.currentIndex];
+    const shareUrl = buildShareUrl(folder, song);
 
     navigator.clipboard.writeText(shareUrl).then(() => {
         showToast('分享链接已复制到剪贴板');
