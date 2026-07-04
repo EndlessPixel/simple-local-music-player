@@ -506,7 +506,7 @@ function getPrevIndex() {
 // 播放控制事件
 playBtn.addEventListener('click', () => {
     if (state.currentIndex === -1 && state.flatSongs.length > 0) {
-        playSong(0);
+        playSong(0, false);
         safePlay().then(() => {
             state.isPlaying = true;
             updatePlayButton();
@@ -868,8 +868,13 @@ refreshBtn.addEventListener('click', async () => {
 });
 
 function handleAudioTimeUpdate() {
+    if (!audio.duration || isNaN(audio.duration) || audio.duration === Infinity) {
+        progressFill.style.width = '0%';
+        currentTimeEl.textContent = formatTime(audio.currentTime);
+        return;
+    }
     const percent = (audio.currentTime / audio.duration) * 100;
-    progressFill.style.width = `${percent}%`;
+    progressFill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
     currentTimeEl.textContent = formatTime(audio.currentTime);
 }
 
@@ -1327,7 +1332,7 @@ async function init() {
             startAutoRefresh();
         }
         const savedVolume = localStorage.getItem('musicVolume');
-        const volume = savedVolume ? parseInt(savedVolume) : 80;
+        const volume = savedVolume !== null ? parseInt(savedVolume, 10) : 80;
         volumeSlider.value = volume;
         audio.volume = volume / 100;
         updateVolumeIcon(volume);
