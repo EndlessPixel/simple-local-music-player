@@ -1115,6 +1115,10 @@ body {
         max-height: 40vh;
     }
 
+    .main-content {
+        padding-top: 80px;
+    }
+
     .album-art {
         width: 240px;
         height: 240px;
@@ -1151,6 +1155,159 @@ body {
 
     .album-art ion-icon {
         font-size: 60px;
+    }
+}
+
+.mobile-menu-toggle,
+.mobile-menu-backdrop {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .mobile-menu-toggle {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        z-index: 1101;
+        min-width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        background: rgba(255,255,255,0.08);
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--border);
+        cursor: pointer;
+        box-shadow: 0 12px 24px rgba(0,0,0,0.18);
+        transition: all 0.2s ease;
+        gap: 8px;
+        padding: 0 12px;
+    }
+
+    .mobile-menu-toggle:hover {
+        background: rgba(255,255,255,0.12);
+    }
+
+    .mobile-menu-text {
+        display: inline-flex;
+        align-items: center;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+    }
+
+    .header-buttons {
+        right: 16px;
+        gap: 8px;
+    }
+
+    .sidebar {
+        position: fixed;
+        top: 72px;
+        left: 0;
+        right: 0;
+        width: 100%;
+        max-width: 100%;
+        max-height: calc(100vh - 72px);
+        z-index: 1100;
+        transform: translateY(-110%);
+        transition: transform 0.3s ease;
+        border-radius: 0 0 24px 24px;
+        border: 1px solid var(--border);
+        border-top: none;
+        overflow-y: auto;
+        background: rgba(15, 15, 50, 0.98);
+        backdrop-filter: blur(40px);
+    }
+
+    #menuToggle:checked ~ .mobile-menu-backdrop {
+        display: block;
+        opacity: 1;
+        visibility: visible;
+    }
+
+    #menuToggle:checked ~ .app .sidebar {
+        transform: translateY(0);
+    }
+
+    .mobile-menu-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.3s ease, visibility 0.3s ease;
+        z-index: 1099;
+    }
+
+    .sidebar-header {
+        padding-top: 24px;
+    }
+
+    .song-count {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .song-list {
+        padding: 0 10px 24px;
+    }
+
+    .folder-header {
+        padding: 10px 14px;
+    }
+
+    .song-item {
+        padding: 10px 14px;
+        gap: 10px;
+    }
+
+    .controls-wrapper {
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+    }
+
+    .player-bar {
+        padding: 16px;
+    }
+
+    .progress-section {
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .side-controls {
+        position: static;
+        top: auto;
+        right: auto;
+        transform: none;
+        width: 100%;
+        justify-content: center;
+        margin-top: 10px;
+    }
+
+    .volume-slider {
+        width: 90px;
+    }
+
+    .content-area {
+        padding: 28px 16px 32px;
+    }
+}
+
+@media (max-width: 600px) {
+    .mobile-menu-toggle {
+        top: 12px;
+        left: 12px;
+        width: 40px;
+        height: 40px;
+    }
+
+    .sidebar {
+        width: 100%;
+        max-width: 100%;
     }
 }
 

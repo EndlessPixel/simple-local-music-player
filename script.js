@@ -1268,10 +1268,18 @@ function handleSongListClick(e) {
     const songItem = e.target.closest('.song-item');
     if (songItem) {
         playSong(parseInt(songItem.dataset.index));
+        closeMobileSongList();
     }
 }
 
 songList.addEventListener('click', handleSongListClick);
+
+function closeMobileSongList() {
+    const menuToggle = document.getElementById('menuToggle');
+    if (menuToggle && menuToggle.checked) {
+        menuToggle.checked = false;
+    }
+}
 
 // 清理
 function cleanup() {
