@@ -35,7 +35,7 @@ body {
     right: 20px;
     display: flex;
     gap: 8px;
-    z-index: 1000;
+    z-index: 1112; /* 保证高于移动下拉菜单 */
 }
 
 .header-btn {
