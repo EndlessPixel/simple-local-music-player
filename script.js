@@ -361,9 +361,15 @@ function playSong(index, autoPlay = true) {
 
     state.currentIndex = index;
     const { folder, song } = state.flatSongs[index];
-    const path = folder === '.' ? `/${song}` : `/${folder}/${song}`;
+    let path;
+    if (!folder || folder === '.') {
+        path = `/${encodeURIComponent(song)}`;
+    } else {
+        const encodedFolder = folder.split('/').map(encodeURIComponent).join('/');
+        path = `/${encodedFolder}/${encodeURIComponent(song)}`;
+    }
 
-    audio.src = encodeURI(path);
+    audio.src = path;
 
     // 先暂停，清除旧状态
     try {
@@ -557,10 +563,16 @@ downloadBtn.addEventListener('click', () => {
     if (state.currentIndex === -1) return;
 
     const { folder, song } = state.flatSongs[state.currentIndex];
-    const path = folder === '.' ? `/${song}` : `/${folder}/${song}`;
+    let path;
+    if (!folder || folder === '.') {
+        path = `/${encodeURIComponent(song)}`;
+    } else {
+        const encodedFolder = folder.split('/').map(encodeURIComponent).join('/');
+        path = `/${encodedFolder}/${encodeURIComponent(song)}`;
+    }
 
     const link = document.createElement('a');
-    link.href = encodeURI(path);
+    link.href = path;
     link.download = song;
     link.click();
 });
