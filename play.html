@@ -1,27 +1,20 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>音乐播放器</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz@14..32&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
     <script type="module" src="/ionicons/ionicons.esm.js"></script>
     <script nomodule src="/ionicons/ionicons.js"></script>
 </head>
 <body>
-    <div class="bg-gradient"></div>
-    <div class="noise-overlay"></div>
-    <input type="checkbox" id="menuToggle" class="menu-toggle" hidden>
-    <label for="menuToggle" class="mobile-menu-toggle" title="歌曲列表">
-        <ion-icon name="list" size="large"></ion-icon>
-        <span class="mobile-menu-text">列表</span>
-    </label>
-    <label for="menuToggle" class="mobile-menu-backdrop" aria-hidden="true"></label>
 
+    <!-- 顶部按钮（保留全部，仅简化样式） -->
     <div class="header-buttons">
         <a href="https://github.com/EndlessPixel/simple-local-music-player/" class="header-btn" target="_blank" rel="noopener noreferrer" title="GitHub">
             <ion-icon name="logo-github" size="small"></ion-icon>
@@ -34,7 +27,16 @@
         </button>
     </div>
 
+    <!-- 移动端菜单切换（保留） -->
+    <input type="checkbox" id="menuToggle" class="menu-toggle" hidden />
+    <label for="menuToggle" class="mobile-menu-toggle" title="歌曲列表">
+        <ion-icon name="list" size="large"></ion-icon>
+        <span class="mobile-menu-text">列表</span>
+    </label>
+    <label for="menuToggle" class="mobile-menu-backdrop" aria-hidden="true"></label>
+
     <div class="app">
+        <!-- 侧边栏（全部功能保留） -->
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
@@ -47,7 +49,7 @@
                     <span class="search-icon">
                         <ion-icon name="search" size="small"></ion-icon>
                     </span>
-                    <input type="text" class="search-input" id="searchInput" placeholder="搜索音乐...">
+                    <input type="text" class="search-input" id="searchInput" placeholder="搜索音乐..." />
                     <button class="refresh-btn" id="refreshBtn" title="刷新列表">
                         <ion-icon name="refresh-circle" size="small"></ion-icon>
                     </button>
@@ -71,6 +73,7 @@
             </div>
         </aside>
 
+        <!-- 主内容区（全部保留） -->
         <main class="main-content">
             <div class="content-area">
                 <div class="now-playing">
@@ -91,6 +94,7 @@
                 </div>
             </div>
 
+            <!-- 播放栏（全部控制保留） -->
             <div class="player-bar">
                 <div class="progress-section">
                     <span class="time-display" id="currentTime">0:00</span>
@@ -147,7 +151,7 @@
                                 <ion-icon class="icon-volume-low" name="volume-medium" size="small" style="display:none;"></ion-icon>
                                 <ion-icon class="icon-volume-mute" name="volume-mute" size="small" style="display:none;"></ion-icon>
                             </span>
-                            <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="80">
+                            <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="80" />
                         </div>
                     </div>
                 </div>
@@ -155,6 +159,7 @@
         </main>
     </div>
 
+    <!-- 更新日志面板（保留） -->
     <div class="changelog-panel" id="changelogPanel">
         <div class="changelog-header">
             <h3>更新日志</h3>
@@ -172,6 +177,7 @@
     </div>
     <div class="changelog-overlay" id="changelogOverlay"></div>
 
+    <!-- API 文档面板（保留） -->
     <div class="apidoc-panel" id="apidocPanel">
         <div class="changelog-header">
             <h3>API 文档</h3>
@@ -188,8 +194,10 @@
     </div>
     <div class="changelog-overlay" id="apidocOverlay"></div>
 
-    <audio id="audioPlayer">
+    <!-- 音频元素（保留） -->
+    <audio id="audioPlayer"></audio>
 
+    <!-- 您原有的 script.js，功能全部保留 -->
     <script src="script.js"></script>
 </body>
 </html>
