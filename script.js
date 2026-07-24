@@ -1068,7 +1068,6 @@ function initApiDoc() {
     const apiDocPanel = document.getElementById('apidocPanel');
     const apiDocOverlay = document.getElementById('apidocOverlay');
     const apiDocClose = document.getElementById('apidocClose');
-    const apiDocContent = document.getElementById('apidocContent');
 
     apiDocBtn.addEventListener('click', showApiDoc);
     apiDocClose.addEventListener('click', hideApiDoc);
@@ -1077,33 +1076,135 @@ function initApiDoc() {
     function showApiDoc() {
         apiDocPanel.classList.add('show');
         apiDocOverlay.classList.add('show');
-        loadApiDoc();
     }
     function hideApiDoc() {
         apiDocPanel.classList.remove('show');
         apiDocOverlay.classList.remove('show');
     }
-    async function loadApiDoc() {
-        apiDocContent.innerHTML = `<div class="loading-container"><div class="spinner"></div><span>正在加载...</span></div>`;
-        try {
-            const res = await fetch('/api/doc');
-            const doc = await res.json();
-            apiDocContent.innerHTML = doc.endpoints.map(ep => {
-                const params = ep.parameters ? Object.entries(ep.parameters).map(([key, val]) =>
-                    `<div class="apidoc-param"><code>${key}</code>: ${val}</div>`
-                ).join('') : '';
-                return `
-                            <div class="apidoc-endpoint">
-                                <div><span class="apidoc-method">${ep.method}</span><span class="apidoc-path">${ep.path}</span></div>
-                                <div class="apidoc-desc">${ep.description}</div>
-                                ${params ? `<div class="apidoc-params"><div class="apidoc-params-title">参数：</div>${params}</div>` : ''}
-                            </div>
-                        `;
-            }).join('');
-        } catch (err) {
-            apiDocContent.innerHTML = '<div class="changelog-error">加载失败：' + err.message + '</div>';
-        }
+
+    // 内联 API 文档（无需请求服务端）
+    document.getElementById('apidocContent').innerHTML = buildApiDoc();
+}
+
+function buildApiDoc() {
+    const endpoints = [
+        {
+            method: 'GET', path: '/api/songs',
+            title: '获取音乐列表',
+            desc: '扫描音乐目录，返回按文件夹分组的歌曲列表。',
+            params: null,
+            example: `{
+    ".":       ["song.mp3", "demo.flac"],
+    "古典":    ["月光.mp3", "四季.wav"],
+    "Pop":     ["hit.mp3"]
+}`,
+            notes: '根目录的歌曲使用 <code>"."</code> 表示文件夹名。'
+        },
+        {
+            method: 'GET', path: '/api/cover',
+            title: '获取歌曲封面',
+            desc: '查找并返回歌曲的内嵌封面图片。',
+            params: [
+                { name: 'folder', type: 'string', desc: '文件夹名称（需 URL 编码）' },
+                { name: 'song', type: 'string', desc: '歌曲文件名（需 URL 编码）' }
+            ],
+            example: `/api/cover?folder=Pop&song=hit.mp3`,
+            notes: '返回 <code>image/png</code> 或 <code>image/jpeg</code>；找不到则返回 <code>404</code>。'
+        },
+        {
+            method: 'GET', path: '/api/meta',
+            title: '获取歌曲元数据',
+            desc: '读取音频文件的元数据，包括歌手、标题和时长。',
+            params: [
+                { name: 'folder', type: 'string', desc: '文件夹名称（需 URL 编码）' },
+                { name: 'song', type: 'string', desc: '歌曲文件名（需 URL 编码）' }
+            ],
+            example: `// 响应示例
+{
+    "artist":   "周杰伦",
+    "title":    "晴天",
+    "duration": 269.3
+}`,
+            notes: '支持的格式：<code>MP3</code>、<code>FLAC</code>、<code>WAV</code>、<code>OGG</code>、<code>M4A</code>。未识别字段返回 <code>null</code>。'
+        },
+        {
+            method: 'GET', path: '/api/commits',
+            title: '获取更新日志',
+            desc: '从 GitHub 仓库获取最近的提交记录，用于展示更新日志。',
+            params: [
+                { name: 'page', type: 'number', desc: '页码，默认 1' },
+                { name: 'per_page', type: 'number', desc: '每页条数，默认 20' }
+            ],
+            example: `// 响应示例
+[
+    {
+        "sha":         "abc123...",
+        "commit":      { "message": "feat: 新增媒体键支持", "author": {...} },
+        "html_url":    "https://github.com/...",
+        "date":        "2026-07-24T10:00:00Z"
     }
+]`,
+            notes: '数据来自 <code>api.github.com</code>，可能受频率限制。'
+        },
+        {
+            method: 'GET', path: '/{folder}/{song}',
+            title: '获取音乐文件',
+            desc: '直接提供音频文件流，支持 HTTP Range 请求以支持拖拽播放和断点续传。',
+            params: [
+                { name: 'folder', type: 'string', desc: '文件夹名称（可选，根目录歌曲可省略）' },
+                { name: 'song', type: 'string', desc: '歌曲文件名（需 URL 编码）' }
+            ],
+            example: `/Pop/晴天.mp3
+// 或根目录歌曲：
+/song.mp3`,
+            notes: '支持 <code>206 Partial Content</code> 响应（Range 请求），支持的格式：<code>.mp3</code>、<code>.flac</code>、<code>.wav</code>、<code>.ogg</code>、<code>.m4a</code>、<code>.aac</code>、<code>.wma</code>。'
+        }
+    ];
+
+    let html = `
+        <div class="apidoc-intro">
+            <p class="apidoc-subtitle">RESTful 接口，所有响应均为 JSON（文件接口除外）</p>
+        </div>
+    `;
+
+    endpoints.forEach((ep) => {
+        const paramsHtml = ep.params ? `
+            <table class="apidoc-table">
+                <thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead>
+                <tbody>
+                    ${ep.params.map(p => `<tr><td><code>${p.name}</code></td><td>${p.type}</td><td>${p.desc}</td></tr>`).join('')}
+                </tbody>
+            </table>` : '';
+
+        const exampleHtml = ep.example ? `
+            <div class="apidoc-example">
+                <div class="apidoc-example-label">示例</div>
+                <pre><code>${escapeHtml(ep.example)}</code></pre>
+            </div>` : '';
+
+        const notesHtml = ep.notes ? `<div class="apidoc-notes">${ep.notes}</div>` : '';
+
+        html += `
+            <div class="apidoc-endpoint">
+                <div class="apidoc-ep-head">
+                    <span class="apidoc-method">${ep.method}</span>
+                    <span class="apidoc-path">${ep.path}</span>
+                </div>
+                <h4 class="apidoc-ep-title">${ep.title}</h4>
+                <p class="apidoc-desc">${ep.desc}</p>
+                ${paramsHtml}
+                ${exampleHtml}
+                ${notesHtml}
+            </div>`;
+    });
+
+    return html;
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 }
 
 document.addEventListener('DOMContentLoaded', () => {

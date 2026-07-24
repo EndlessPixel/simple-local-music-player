@@ -51,7 +51,6 @@ body {
 [data-theme="dark"] .toast-notification { background: #333338; }
 [data-theme="dark"] .changelog-pagination button { background: #333338; }
 [data-theme="dark"] .endpoint-bg,
-[data-theme="dark"] .apidoc-endpoint,
 [data-theme="dark"] .changelog-item { background: #1e1e22; }
 [data-theme="dark"] .volume-wrapper,
 [data-theme="dark"] .search-input,
@@ -60,7 +59,6 @@ body {
 [data-theme="dark"] .mobile-menu-backdrop { background: rgba(0,0,0,0.5); }
 [data-theme="dark"] .search-input:focus { box-shadow: 0 0 0 3px rgba(0,122,255,0.25); }
 [data-theme="dark"] .changelog-overlay { background: rgba(0,0,0,0.55); }
-[data-theme="dark"] .apidoc-params { background: rgba(255,255,255,0.06); }
 [data-theme="dark"] .auto-refresh-toggle { background: #222; border-color: #444; }
 [data-theme="dark"] .auto-refresh-toggle:hover { background: #333; }
 
@@ -896,44 +894,127 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
     opacity: 0.3;
     cursor: not-allowed;
 }
+/* ===== API 文档 ===== */
+.apidoc-intro { padding-bottom: 12px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
+.apidoc-subtitle { color: var(--text-muted); font-size: 14px; }
+
 .apidoc-endpoint {
-    padding: 14px;
-    border-radius: var(--radius);
+    padding: 20px;
+    border-radius: 12px;
     background: var(--bg);
-    margin-bottom: 12px;
+    margin-bottom: 16px;
     border: 1px solid var(--border);
 }
+.apidoc-ep-head { margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
 .apidoc-method {
-    display: inline-block;
-    padding: 2px 10px;
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 12px;
     background: var(--primary);
     color: #fff;
     border-radius: 6px;
     font-size: 12px;
-    font-weight: 600;
-    margin-right: 8px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    flex-shrink: 0;
 }
 .apidoc-path {
-    font-family: monospace;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
     font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    word-break: break-all;
+}
+.apidoc-ep-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 4px;
 }
 .apidoc-desc {
-    margin-top: 6px;
     font-size: 14px;
     color: var(--text-muted);
+    margin-bottom: 12px;
+    line-height: 1.5;
 }
-.apidoc-params {
-    margin-top: 6px;
-    padding: 8px 12px;
-    background: rgba(0,0,0,0.04);
-    border-radius: 6px;
+
+/* 参数表格 */
+.apidoc-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 12px;
     font-size: 13px;
 }
-.apidoc-params-title {
+.apidoc-table th {
+    text-align: left;
+    padding: 8px 10px;
+    background: rgba(0,0,0,0.04);
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.apidoc-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+.apidoc-table code {
+    background: rgba(0,122,255,0.1);
+    color: var(--primary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+[data-theme="dark"] .apidoc-table th { background: rgba(255,255,255,0.04); }
+[data-theme="dark"] .apidoc-table code { background: rgba(0,122,255,0.18); }
+
+/* 示例代码块 */
+.apidoc-example {
+    margin-bottom: 10px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #1e1e22;
+    border: 1px solid #333;
+}
+.apidoc-example-label {
+    font-size: 11px;
+    padding: 4px 14px;
+    color: #999;
+    background: rgba(255,255,255,0.03);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
     font-weight: 600;
 }
-.apidoc-param code {
+.apidoc-example pre {
+    margin: 0;
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #c9d1d9;
+    white-space: pre;
+}
+[data-theme="light"] .apidoc-example { background: #f6f8fa; border-color: #d0d7de; }
+[data-theme="light"] .apidoc-example pre { color: #24292f; }
+[data-theme="light"] .apidoc-example-label { color: #656d76; background: rgba(0,0,0,0.02); }
+
+/* 注意事项 */
+.apidoc-notes {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+}
+.apidoc-notes code {
+    background: rgba(0,122,255,0.1);
     color: var(--primary);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
 }
 
 /* ===== Toast ===== */
