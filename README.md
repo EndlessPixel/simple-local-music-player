@@ -133,4 +133,4 @@ music/
 
 ## License
 
-ISC
+MIT License
