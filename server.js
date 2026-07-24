@@ -2,7 +2,7 @@ import { createServer } from 'http';
 import https from 'https';
 import { createReadStream, statSync } from 'fs';
 import { promises as fs } from 'fs';
-import { join, resolve, extname, dirname } from 'path';
+import { join, resolve, extname, dirname, parse as parsePath } from 'path';
 import { fileURLToPath } from 'url';
 import { parse } from 'url';
 import { parseFile } from 'music-metadata';
@@ -333,18 +333,17 @@ async function getLyricsForFile(filePath) {
             lyrics = metadata.common.lyrics[0].text || null;
             if (lyrics) {
                 source = 'embedded';
-                console.log(`[lyrics] 内嵌歌词: ${filePath}`);
+                console.log(`[lyrics] 内嵌歌词: ${filePath} (${lyrics.length}字符)`);
             }
         }
-    } catch {
-        // 解析失败，继续尝试外部文件
+    } catch (err) {
+        console.log(`[lyrics] parseFile失败: ${filePath} -> ${err.message}`);
     }
 
     // 回退：同目录下匹配 .lrc 文件（忽略大小写，忽略 _歌词/-歌词 等后缀）
     if (!lyrics) {
         try {
-            const dir = dirname(filePath);
-            const songBase = filePath.substring(Math.max(0, filePath.lastIndexOf('/') + 1), filePath.lastIndexOf('.'));
+            const { dir, name: songBase } = parsePath(filePath);
             const songBaseLower = songBase.toLowerCase();
             const dirEntries = await fs.readdir(dir);
             console.log(`[lyrics] 查找LRC: dir=${dir} base=${songBase} 目录文件=${dirEntries.length}个`);
