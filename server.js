@@ -335,16 +335,32 @@ async function getLyricsForFile(filePath) {
         // 解析失败，继续尝试外部文件
     }
 
-    // 回退：同目录下同名 .lrc 文件
+    // 回退：同目录下匹配 .lrc 文件（忽略大小写，忽略 _歌词/-歌词 等后缀）
     if (!lyrics) {
         try {
             const dir = dirname(filePath);
-            const baseName = filePath.substring(0, Math.max(0, filePath.lastIndexOf('.')));
-            const lrcPath = `${baseName}.lrc`;
-            // 安全检查
-            const resolved = resolve(lrcPath);
-            if (resolved.startsWith(MUSIC_DIR)) {
-                lyrics = await fs.readFile(lrcPath, 'utf-8');
+            const songBase = filePath.substring(Math.max(0, filePath.lastIndexOf('/') + 1), filePath.lastIndexOf('.'));
+            const songBaseLower = songBase.toLowerCase();
+            const dirEntries = await fs.readdir(dir);
+            const lrcFile = dirEntries.find(name => {
+                const extIdx = name.lastIndexOf('.');
+                if (extIdx === -1) return false;
+                if (name.substring(extIdx).toLowerCase() !== '.lrc') return false;
+                const lrcBase = name.substring(0, extIdx);
+                const lrcBaseLower = lrcBase.toLowerCase();
+                if (lrcBaseLower === songBaseLower) return true;
+                if (lrcBaseLower.startsWith(songBaseLower)) {
+                    const suffix = lrcBase.substring(songBase.length);
+                    if (/^[_-]?(歌词|lrc|lyric|lyrics?|krc)$/i.test(suffix)) return true;
+                }
+                return false;
+            });
+            if (lrcFile) {
+                const lrcPath = join(dir, lrcFile);
+                const resolved = resolve(lrcPath);
+                if (resolved.startsWith(MUSIC_DIR)) {
+                    lyrics = await fs.readFile(lrcPath, 'utf-8');
+                }
             }
         } catch {
             // 外部 lrc 文件不存在，忽略
