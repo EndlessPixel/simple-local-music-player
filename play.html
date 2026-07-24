@@ -109,7 +109,7 @@
                     </div>
                     <span class="time-display" id="totalTime">0:00</span>
                 </div>
-                <div style="position: relative;">
+                <div class="player-controls-row">
                     <div class="controls-wrapper">
                         <button class="control-btn" id="prevBtn" title="上一首">
                             <ion-icon name="play-skip-back" size="small"></ion-icon>
@@ -148,15 +148,13 @@
                             <ion-icon name="share-social" size="small"></ion-icon>
                         </button>
                     </div>
-                    <div class="side-controls">
-                        <div class="volume-wrapper">
-                            <span class="volume-icon">
-                                <ion-icon class="icon-volume-high" name="volume-high" size="small"></ion-icon>
-                                <ion-icon class="icon-volume-low" name="volume-medium" size="small" style="display:none;"></ion-icon>
-                                <ion-icon class="icon-volume-mute" name="volume-mute" size="small" style="display:none;"></ion-icon>
-                            </span>
-                            <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="80" />
-                        </div>
+                    <div class="volume-wrapper">
+                        <span class="volume-icon">
+                            <ion-icon class="icon-volume-high" name="volume-high" size="small"></ion-icon>
+                            <ion-icon class="icon-volume-low" name="volume-medium" size="small" style="display:none;"></ion-icon>
+                            <ion-icon class="icon-volume-mute" name="volume-mute" size="small" style="display:none;"></ion-icon>
+                        </span>
+                        <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="80" />
                     </div>
                 </div>
             </div>

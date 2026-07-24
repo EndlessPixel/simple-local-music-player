@@ -116,6 +116,15 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function highlightMatches(text, query) {
+    if (!query || !query.trim()) return escapeHtml(text);
+    // 先转义HTML安全文本，再在转义后的文本中匹配高亮
+    const safeText = escapeHtml(text);
+    const safeQuery = escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${safeQuery})`, 'gi');
+    return safeText.replace(regex, '<mark class="search-highlight">$1</mark>');
+}
+
 // ---------- 播放错误处理增强 ----------
 function handlePlayError(err, context = '播放') {
     console.warn(`[${context}] 播放失败:`, err);
@@ -523,6 +532,7 @@ downloadBtn.addEventListener('click', () => {
 
 // ---------- 分享功能 ----------
 const shareBtn = document.getElementById('shareBtn');
+
 function buildShareUrl(folder, song) {
     const params = new URLSearchParams();
     params.set('song', song);
@@ -530,8 +540,28 @@ function buildShareUrl(folder, song) {
     return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
 }
 
+function buildShortShareUrl(songId) {
+    const params = new URLSearchParams();
+    params.set('song_id', songId.toString());
+    return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+}
+
 function applyShareLinkFromQuery() {
     const params = new URLSearchParams(window.location.search);
+
+    // 优先处理 song_id（简短链接）
+    const songId = params.get('song_id');
+    if (songId !== null) {
+        const index = parseInt(songId, 10);
+        if (isNaN(index) || index < 0 || index >= state.flatSongs.length) {
+            showToast('分享的歌曲不存在或已被删除');
+            return;
+        }
+        playSong(index, false);
+        return;
+    }
+
+    // 处理 song + folder（高精度链接）
     const song = params.get('song');
     if (!song) return;
     const folder = params.get('folder');
@@ -544,21 +574,23 @@ function applyShareLinkFromQuery() {
         showToast('分享的歌曲不存在或已被删除');
         return;
     }
-    playSong(index, false); // 只加载，不自动播放（让用户手动点击）
+    playSong(index, false);
 }
 
 shareBtn.addEventListener('click', () => {
     if (state.currentIndex === -1) return;
     const { folder, song } = state.flatSongs[state.currentIndex];
-    const shareUrl = buildShareUrl(folder, song);
+    const accurateUrl = buildShareUrl(folder, song);
+    const shortUrl = buildShortShareUrl(state.currentIndex);
+    const shareText = `高精度（含歌曲名+文件夹，准确性高但链接较长）:\n${accurateUrl}\n\n简短（仅含歌曲ID，链接短但目录变化后可能失效）:\n${shortUrl}`;
     if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(shareUrl).then(() => {
-            showToast('分享链接已复制到剪贴板');
+        navigator.clipboard.writeText(shareText).then(() => {
+            showToast('两种分享链接已复制到剪贴板');
         }).catch(() => {
-            fallbackCopy(shareUrl);
+            fallbackCopy(shareText);
         });
     } else {
-        fallbackCopy(shareUrl);
+        fallbackCopy(shareText);
     }
 });
 
@@ -859,7 +891,11 @@ function renderSongList(songs, filter = '') {
             info.className = 'song-info';
             const title = document.createElement('div');
             title.className = 'song-title-text';
-            title.textContent = song.replace(/\.[^.]+$/, '');
+            if (filter && filter.trim()) {
+                title.innerHTML = highlightMatches(song.replace(/\.[^.]+$/, ''), filter);
+            } else {
+                title.textContent = song.replace(/\.[^.]+$/, '');
+            }
             const folderName = document.createElement('div');
             folderName.className = 'song-folder';
             folderName.textContent = folder === '.' ? '根目录' : folder;
@@ -895,7 +931,8 @@ function renderSongList(songs, filter = '') {
 // ---------- 自动播放尝试（页面加载时） ----------
 function attemptAutoPlayOnLoad() {
     // 如果是分享链接，不自动播放
-    if (new URLSearchParams(window.location.search).has('song')) return;
+    const shareParams = new URLSearchParams(window.location.search);
+    if (shareParams.has('song') || shareParams.has('song_id')) return;
     if (state.currentIndex === -1) return;
     // 尝试播放第一首
     safePlay().then(() => {
@@ -1420,7 +1457,8 @@ async function init() {
         updateVolumeIcon(volume);
 
         // 尝试自动播放（仅在非分享链接时）
-        const isShareLink = new URLSearchParams(window.location.search).has('song');
+        const qParams = new URLSearchParams(window.location.search);
+        const isShareLink = qParams.has('song') || qParams.has('song_id');
         if (!isShareLink && state.flatSongs.length > 0) {
             // 默认选中第一首，但不自动播放，只加载
             playSong(0, false);
