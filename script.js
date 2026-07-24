@@ -1002,12 +1002,15 @@ function initChangelog() {
     const changelogContent = document.getElementById('changelogContent');
     const changelogPagination = document.getElementById('changelogPagination');
 
+    let currentPage = 1;
+    const PER_PAGE = 20;
+
     changelogBtn.addEventListener('click', () => showChangelog());
     changelogClose.addEventListener('click', hideChangelog);
     changelogOverlay.addEventListener('click', hideChangelog);
     changelogPagination.addEventListener('click', (e) => {
         const btn = e.target.closest('button');
-        if (!btn) return;
+        if (!btn || btn.classList.contains('active')) return;
         const page = parseInt(btn.dataset.page);
         if (!isNaN(page)) loadChangelog(page);
     });
@@ -1022,44 +1025,52 @@ function initChangelog() {
         changelogPanel.classList.remove('show');
         changelogOverlay.classList.remove('show');
     }
-    let currentPage = 1;
-    const PER_PAGE = 20;
+
     async function loadChangelog(page) {
-        changelogContent.innerHTML = `<div class="loading-container"><div class="spinner"></div><span>正在加载...</span></div>`;
+        currentPage = page;
+        changelogContent.innerHTML = '<div class="loading-container"><div class="spinner"></div><span>正在加载...</span></div>';
+        changelogPagination.innerHTML = '';
         try {
             const res = await fetch(`/api/commits?per_page=${PER_PAGE}&page=${page}`);
             const commits = await res.json();
             if (!Array.isArray(commits)) throw new Error('数据格式错误');
             if (commits.length === 0) {
                 changelogContent.innerHTML = '<div class="changelog-empty">暂无更新日志</div>';
-                changelogPagination.innerHTML = '';
                 return;
             }
             changelogContent.innerHTML = commits.map(commit => {
-                const date = new Date(commit.commit.author.date).toLocaleString('zh-CN');
+                const date = new Date(commit.commit.author.date);
+                const timeStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
                 const author = commit.author || commit.commit.author;
                 const avatar = author && author.avatar_url ? author.avatar_url : '';
-                const authorName = author ? (author.login || author.name || '未知作者') : '未知作者';
+                const authorName = author ? (author.login || author.name || '未知') : '未知';
                 return `
-                            <div class="changelog-item">
-                                <div class="changelog-commit">${commit.sha.substring(0, 7)}</div>
-                                <div class="changelog-message">${escapeHtml(commit.commit.message)}</div>
-                                <div class="changelog-author">${avatar ? `<img src="${avatar}" alt="${authorName}">` : ''}<span>${authorName}</span></div>
-                                <div class="changelog-date">${date}</div>
-                            </div>
-                        `;
+                    <div class="changelog-item">
+                        <div class="changelog-item-header">
+                            ${avatar ? `<img class="changelog-avatar" src="${avatar}" alt="${authorName}" loading="lazy">` : ''}
+                            <span class="changelog-commit">${commit.sha.substring(0, 7)}</span>
+                        </div>
+                        <div class="changelog-message">${escapeHtml(commit.commit.message)}</div>
+                        <div class="changelog-meta">
+                            <span class="changelog-author"><span>${escapeHtml(authorName)}</span></span>
+                            <span class="changelog-date">${timeStr}</span>
+                        </div>
+                    </div>`;
             }).join('');
-            const hasPrev = page > 1;
-            const hasNext = commits.length === PER_PAGE;
-            let html = '';
-            if (hasPrev) html += `<button data-page="${page - 1}">上一页</button>`;
-            html += `<button class="active" data-page="${page}">${page}</button>`;
-            if (hasNext) html += `<button data-page="${page + 1}">下一页</button>`;
-            changelogPagination.innerHTML = html;
+            renderPagination(page, commits.length === PER_PAGE);
         } catch (err) {
             changelogContent.innerHTML = '<div class="changelog-error">加载失败：' + err.message + '</div>';
-            changelogPagination.innerHTML = '';
         }
+    }
+
+    function renderPagination(page, hasNext) {
+        const hasPrev = page > 1;
+        if (!hasPrev && !hasNext) return;
+        let html = '';
+        html += `<button data-page="${page - 1}"${hasPrev ? '' : ' disabled'}>上一页</button>`;
+        html += `<span class="changelog-page-info">第 ${page} 页</span>`;
+        html += `<button data-page="${page + 1}"${hasNext ? '' : ' disabled'}>下一页</button>`;
+        changelogPagination.innerHTML = html;
     }
 }
 
