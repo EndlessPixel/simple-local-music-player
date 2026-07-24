@@ -553,6 +553,42 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
     color: var(--text-dim);
     min-height: 18px;
 }
+.lyrics-container {
+    margin-top: 12px;
+    min-height: 28px;
+}
+.lyrics-placeholder {
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+    opacity: 0.6;
+}
+.lyrics-lines {
+    max-height: 130px;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+    text-align: center;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
+}
+.lyrics-line {
+    padding: 3px 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-muted);
+    transition: var(--transition);
+    cursor: pointer;
+    border-radius: 4px;
+}
+.lyrics-line:hover {
+    color: var(--text);
+}
+.lyrics-line.active {
+    color: var(--primary);
+    font-size: 14px;
+    font-weight: 500;
+    opacity: 1;
+}
 .visualizer-container {
     margin-top: 16px;
 }

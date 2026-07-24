@@ -21,13 +21,17 @@ let scanPromise = null;
 
 const coverCache = new Map(); // key -> { data: Buffer, lastUsed, size }
 const metaCache = new Map();  // key -> { data: object, lastUsed, size }
+const lyricsCache = new Map(); // key -> { data: string|null, lastUsed, size }
 let coverCacheSize = 0;
 let metaCacheSize = 0;
+let lyricsCacheSize = 0;
 
 const COVER_MAX_SIZE = 50 * 1024 * 1024;   // 50 MiB
 const META_MAX_SIZE = 10 * 1024 * 1024;    // 10 MiB
+const LYRICS_MAX_SIZE = 2 * 1024 * 1024;   // 2 MiB
 const COVER_MAX_ENTRIES = 50;
 const META_MAX_ENTRIES = 100;
+const LYRICS_MAX_ENTRIES = 200;
 
 function pruneCache(cache, sizeVar, maxSize, maxEntries) {
     while (cache.size > maxEntries || sizeVar > maxSize) {
@@ -312,6 +316,48 @@ async function getMetaFromFile(filePath) {
     }
 }
 
+async function getLyricsForFile(filePath) {
+    if (lyricsCache.has(filePath)) {
+        const entry = lyricsCache.get(filePath);
+        entry.lastUsed = Date.now();
+        return entry.data;
+    }
+
+    let lyrics = null;
+
+    try {
+        // 优先：读取音频内嵌歌词
+        const metadata = await parseFile(filePath, { skipCovers: true });
+        if (metadata.common.lyrics && metadata.common.lyrics.length > 0) {
+            lyrics = metadata.common.lyrics[0].text || null;
+        }
+    } catch {
+        // 解析失败，继续尝试外部文件
+    }
+
+    // 回退：同目录下同名 .lrc 文件
+    if (!lyrics) {
+        try {
+            const dir = dirname(filePath);
+            const baseName = filePath.substring(0, Math.max(0, filePath.lastIndexOf('.')));
+            const lrcPath = `${baseName}.lrc`;
+            // 安全检查
+            const resolved = resolve(lrcPath);
+            if (resolved.startsWith(MUSIC_DIR)) {
+                lyrics = await fs.readFile(lrcPath, 'utf-8');
+            }
+        } catch {
+            // 外部 lrc 文件不存在，忽略
+        }
+    }
+
+    const size = lyrics ? Buffer.byteLength(lyrics, 'utf-8') : 0;
+    lyricsCache.set(filePath, { data: lyrics, lastUsed: Date.now(), size });
+    lyricsCacheSize += size;
+    lyricsCacheSize = pruneCache(lyricsCache, lyricsCacheSize, LYRICS_MAX_SIZE, LYRICS_MAX_ENTRIES);
+    return lyrics;
+}
+
 // ---------- 日志（脱敏） ----------
 function log(req, res, startTime) {
     const ip = req.socket.remoteAddress;
@@ -400,6 +446,29 @@ const server = createServer(async (req, res) => {
             const meta = await getMetaFromFile(filePath);
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify(meta));
+            return;
+        }
+
+        // ---------- API: /api/lyrics ----------
+        if (pathname === '/api/lyrics') {
+            const folder = query.folder || '';
+            const song = query.song;
+            if (!song) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Missing song parameter' }));
+                return;
+            }
+
+            const filePath = safeMusicPath(folder, song);
+            if (!filePath) {
+                res.writeHead(403, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Forbidden' }));
+                return;
+            }
+
+            const lyrics = await getLyricsForFile(filePath);
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ lyrics }));
             return;
         }
 

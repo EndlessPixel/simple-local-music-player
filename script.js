@@ -86,6 +86,11 @@ const speedBtn = document.getElementById('speedBtn');
 const speedMenu = document.getElementById('speedMenu');
 const speedLabel = speedBtn.querySelector('.speed-label');
 const volumeSlider = document.getElementById('volumeSlider');
+const lyricsPlaceholder = document.getElementById('lyricsPlaceholder');
+const lyricsLines = document.getElementById('lyricsLines');
+
+let lyricsData = [];       // [{time: seconds, text: string}, ...]
+let lyricsActiveIndex = -1;
 
 // ---------- 工具函数 ----------
 function showToast(message) {
@@ -169,6 +174,7 @@ function handleAudioTimeUpdate() {
     const percent = (audio.currentTime / audio.duration) * 100;
     progressFill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
     currentTimeEl.textContent = formatTime(audio.currentTime);
+    updateLyrics(audio.currentTime);
 }
 
 function handleAudioLoadedMetadata() {
@@ -276,6 +282,7 @@ function playSong(index, autoPlay = true) {
     mediaSessionMeta.artist = '';
     updateMediaSession();
     loadMeta(folder, song);
+    loadLyrics(folder, song);
 
     if (autoPlay) {
         safePlay().then(() => {
@@ -462,6 +469,121 @@ async function loadMeta(folder, song) {
     } catch (err) {
         console.error('加载元数据失败:', err);
     }
+}
+
+// ---------- 歌词 ----------
+function parseLrc(lrcText) {
+    const lines = [];
+    if (!lrcText || typeof lrcText !== 'string') return lines;
+    // 匹配 [mm:ss.xx] 或 [mm:ss.xxx]
+    const regex = /\[(\d{1,3}):(\d{1,2})(?:\.(\d{1,3}))?\]/g;
+    const textLines = lrcText.split('\n');
+    for (const line of textLines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        let match;
+        // 同一行可能有多个时间标签
+        const timestamps = [];
+        const matchRegex = new RegExp(regex.source, 'g');
+        while ((match = matchRegex.exec(trimmed)) !== null) {
+            const mins = parseInt(match[1], 10);
+            const secs = parseInt(match[2], 10);
+            const ms = match[3] ? parseInt(match[3].padEnd(3, '0'), 10) : 0;
+            timestamps.push(mins * 60 + secs + ms / 1000);
+        }
+        if (timestamps.length === 0) continue;
+        // 提取最后的纯文本部分
+        const text = trimmed.replace(regex, '').trim();
+        if (!text) continue;
+        for (const time of timestamps) {
+            lines.push({ time, text });
+        }
+    }
+    return lines.sort((a, b) => a.time - b.time);
+}
+
+function renderLyrics() {
+    lyricsLines.innerHTML = '';
+    if (lyricsData.length === 0) return;
+    const fragment = document.createDocumentFragment();
+    for (let i = 0; i < lyricsData.length; i++) {
+        const div = document.createElement('div');
+        div.className = 'lyrics-line';
+        div.textContent = lyricsData[i].text;
+        div.dataset.index = i;
+        div.addEventListener('click', () => {
+            if (lyricsData[i].time !== undefined && audio.duration) {
+                audio.currentTime = lyricsData[i].time;
+            }
+        });
+        fragment.appendChild(div);
+    }
+    lyricsLines.appendChild(fragment);
+}
+
+async function loadLyrics(folder, song) {
+    // 重置
+    lyricsData = [];
+    lyricsActiveIndex = -1;
+    lyricsLines.innerHTML = '';
+    lyricsLines.style.display = 'none';
+    lyricsPlaceholder.textContent = '加载歌词...';
+    lyricsPlaceholder.style.display = '';
+
+    const params = new URLSearchParams();
+    if (folder !== '.') params.set('folder', folder);
+    params.set('song', song);
+    try {
+        const res = await fetch(`/api/lyrics?${params.toString()}`);
+        if (!res.ok) throw new Error('Failed to fetch lyrics');
+        const data = await res.json();
+        if (data.lyrics && typeof data.lyrics === 'string') {
+            lyricsData = parseLrc(data.lyrics);
+        }
+    } catch (err) {
+        // 静默处理，不打断播放
+        console.error('加载歌词失败:', err);
+    }
+
+    if (lyricsData.length > 0) {
+        renderLyrics();
+        lyricsLines.style.display = '';
+        lyricsPlaceholder.style.display = 'none';
+    } else {
+        lyricsPlaceholder.textContent = '暂无歌词';
+        lyricsPlaceholder.style.display = '';
+        lyricsLines.style.display = 'none';
+    }
+}
+
+function updateLyrics(currentTime) {
+    if (lyricsData.length === 0) return;
+    if (isNaN(currentTime) || currentTime === Infinity) return;
+
+    // 找到当前时间对应的歌词行
+    let newIndex = -1;
+    for (let i = 0; i < lyricsData.length; i++) {
+        if (lyricsData[i].time <= currentTime) {
+            newIndex = i;
+        } else {
+            break;
+        }
+    }
+
+    if (newIndex === lyricsActiveIndex) return;
+    lyricsActiveIndex = newIndex;
+
+    // 更新高亮
+    const allLines = lyricsLines.querySelectorAll('.lyrics-line');
+    allLines.forEach((line, i) => {
+        if (i === newIndex) {
+            line.classList.add('active');
+            // 滚动到可视区域
+            line.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        } else {
+            line.classList.remove('active');
+        }
+    });
 }
 
 // ---------- 播放控制事件 ----------
