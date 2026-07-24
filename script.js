@@ -259,7 +259,9 @@ function playSong(index, autoPlay = true) {
     scrollToFolder(folder);
     const songTitle = song.replace(/\.[^.]+$/, '');
     currentTitleEl.textContent = songTitle;
+    currentTitleEl.title = songTitle;
     currentPathEl.textContent = folder === '.' ? song : `${folder}/${song}`;
+    currentPathEl.title = currentPathEl.textContent;
     // 更新 Media Session 元数据
     mediaSessionMeta.title = songTitle;
     mediaSessionMeta.artist = '';
@@ -438,9 +440,11 @@ async function loadMeta(folder, song) {
             const meta = await res.json();
             if (meta.artist) {
                 currentArtistEl.textContent = meta.artist;
+                currentArtistEl.title = meta.artist;
                 mediaSessionMeta.artist = meta.artist;
             } else {
                 currentArtistEl.textContent = '';
+                currentArtistEl.title = '';
                 mediaSessionMeta.artist = '';
             }
             if (meta.duration) totalTimeEl.textContent = formatTime(meta.duration);
