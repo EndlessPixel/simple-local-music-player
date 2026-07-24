@@ -597,7 +597,9 @@ function copyShareUrl(type) {
     const { folder, song } = state.flatSongs[state.currentIndex];
     let url;
     if (type === 'short') {
-        url = buildShortShareUrl(state.currentIndex);
+        const allSongs = state.flatAllSongs || state.flatSongs;
+        const fullIndex = allSongs.findIndex(item => item.folder === folder && item.song === song);
+        url = buildShortShareUrl(fullIndex);
     } else {
         url = buildShareUrl(folder, song);
     }
@@ -879,6 +881,7 @@ function renderSongList(songs, filter = '') {
     }
     songList.innerHTML = '';
     state.flatSongs = [];
+    const isFullList = (filter === '');
     let totalSongs = 0;
     const folders = Object.keys(songs).sort((a, b) => {
         if (a === '.') return -1;
@@ -941,6 +944,9 @@ function renderSongList(songs, filter = '') {
         }
         group.appendChild(songsContainer);
         songList.appendChild(group);
+    }
+    if (isFullList) {
+        state.flatAllSongs = [...state.flatSongs];
     }
     songCount.innerHTML = `
                 <span>共 ${totalSongs} 首歌曲</span>
