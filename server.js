@@ -319,8 +319,13 @@ async function getMetaFromFile(filePath) {
 async function getLyricsForFile(filePath) {
     if (lyricsCache.has(filePath)) {
         const entry = lyricsCache.get(filePath);
-        entry.lastUsed = Date.now();
-        return entry.data;
+        if (entry.data !== null) {
+            entry.lastUsed = Date.now();
+            return entry.data;
+        }
+        // cache 中 data 为 null，重新读取
+        console.log(`[lyrics] 前次无歌词，重新尝试读取: ${filePath}`);
+        lyricsCache.delete(filePath);
     }
 
     let lyrics = null;
