@@ -324,12 +324,17 @@ async function getLyricsForFile(filePath) {
     }
 
     let lyrics = null;
+    let source = 'none';
 
     try {
         // 优先：读取音频内嵌歌词
         const metadata = await parseFile(filePath, { skipCovers: true });
         if (metadata.common.lyrics && metadata.common.lyrics.length > 0) {
             lyrics = metadata.common.lyrics[0].text || null;
+            if (lyrics) {
+                source = 'embedded';
+                console.log(`[lyrics] 内嵌歌词: ${filePath}`);
+            }
         }
     } catch {
         // 解析失败，继续尝试外部文件
@@ -342,6 +347,7 @@ async function getLyricsForFile(filePath) {
             const songBase = filePath.substring(Math.max(0, filePath.lastIndexOf('/') + 1), filePath.lastIndexOf('.'));
             const songBaseLower = songBase.toLowerCase();
             const dirEntries = await fs.readdir(dir);
+            console.log(`[lyrics] 查找LRC: dir=${dir} base=${songBase} 目录文件=${dirEntries.length}个`);
             const lrcFile = dirEntries.find(name => {
                 const extIdx = name.lastIndexOf('.');
                 if (extIdx === -1) return false;
@@ -360,13 +366,18 @@ async function getLyricsForFile(filePath) {
                 const resolved = resolve(lrcPath);
                 if (resolved.startsWith(MUSIC_DIR)) {
                     lyrics = await fs.readFile(lrcPath, 'utf-8');
+                    source = 'lrc';
+                    console.log(`[lyrics] 外部LRC: ${lrcPath} (${lyrics.length}字符)`);
                 }
+            } else {
+                console.log(`[lyrics] 未找到匹配的.lrc文件`);
             }
-        } catch {
-            // 外部 lrc 文件不存在，忽略
+        } catch (err) {
+            console.log(`[lyrics] LRC查找异常: ${err.message}`);
         }
     }
 
+    console.log(`[lyrics] 结果: ${filePath} -> source=${source}, size=${lyrics ? lyrics.length : 0}`);
     const size = lyrics ? Buffer.byteLength(lyrics, 'utf-8') : 0;
     lyricsCache.set(filePath, { data: lyrics, lastUsed: Date.now(), size });
     lyricsCacheSize += size;
