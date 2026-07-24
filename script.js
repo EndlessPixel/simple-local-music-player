@@ -264,9 +264,11 @@ function playSong(index, autoPlay = true) {
     }
 
     // 先暂停，清除旧状态
+    const savedSpeed = audio.playbackRate;
     audio.pause();
     audio.src = path;
     audio.load(); // 显式加载，触发 error 事件如果文件有问题
+    audio.playbackRate = savedSpeed;
 
     // 更新 UI
     loadCover(folder, song);
@@ -1117,6 +1119,7 @@ speedMenu.addEventListener('click', (e) => {
         const speed = parseFloat(e.target.dataset.speed);
         audio.playbackRate = speed;
         speedLabel.textContent = speed === 1.0 ? '1.0x' : speed + 'x';
+        localStorage.setItem('musicSpeed', speed);
         speedMenu.querySelectorAll('button').forEach(btn => {
             btn.classList.toggle('active', parseFloat(btn.dataset.speed) === speed);
         });
@@ -1614,6 +1617,14 @@ async function init() {
         volumeSlider.value = volume;
         audio.volume = volume / 100;
         updateVolumeIcon(volume);
+
+        // 恢复播放速度
+        const savedSpeed = localStorage.getItem('musicSpeed');
+        if (savedSpeed !== null) {
+            const speed = parseFloat(savedSpeed);
+            audio.playbackRate = speed;
+            speedLabel.textContent = speed.toFixed(2) + 'x';
+        }
 
         // 尝试自动播放（仅在非分享链接时）
         const qParams = new URLSearchParams(window.location.search);
