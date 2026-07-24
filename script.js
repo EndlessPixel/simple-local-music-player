@@ -1,3 +1,46 @@
+// ---- 主题管理 ------------------------------------------------------------
+const THEME_KEY = 'theme-preference';
+
+function getSystemTheme() {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem(THEME_KEY, theme);
+}
+
+function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || getSystemTheme();
+    applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+
+function initTheme() {
+    const saved = localStorage.getItem(THEME_KEY);
+    applyTheme(saved || getSystemTheme());
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (!localStorage.getItem(THEME_KEY)) applyTheme(getSystemTheme());
+    });
+}
+
+// ---- 性能工具 ------------------------------------------------------------
+function throttle(fn, delay) {
+    let last = 0;
+    return function (...args) {
+        const now = Date.now();
+        if (now - last >= delay) { last = now; fn.apply(this, args); }
+    };
+}
+
+function debounce(fn, delay) {
+    let timer;
+    return function (...args) {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn.apply(this, args), delay);
+    };
+}
+
+// ---- 常量 ----------------------------------------------------------------
 const AUTO_REFRESH_INTERVAL = 60;
 const state = {
     songs: {},
@@ -181,7 +224,7 @@ function handleAudioError() {
     albumArt.classList.remove('playing');
 }
 
-audio.addEventListener('timeupdate', handleAudioTimeUpdate);
+audio.addEventListener('timeupdate', throttle(handleAudioTimeUpdate, 60));
 audio.addEventListener('loadedmetadata', handleAudioLoadedMetadata);
 audio.addEventListener('ended', handleAudioEnded);
 audio.addEventListener('pause', handleAudioPause);
@@ -545,12 +588,12 @@ volumeSlider.addEventListener('input', () => {
 });
 
 // ---------- 搜索 ----------
-searchInput.addEventListener('input', (e) => {
+searchInput.addEventListener('input', debounce((e) => {
     const value = e.target.value;
     renderSongList(state.songs, value);
     if (value.trim()) showSearchHistory();
     else hideSearchHistory();
-});
+}, 200));
 
 searchInput.addEventListener('focus', () => {
     if (state.searchHistory.length > 0) showSearchHistory();
@@ -903,7 +946,7 @@ function initVisualizer() {
 function startVisualizer() {
     if (!audioCtx) initVisualizer();
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    drawVisualizer();
+    if (!document.hidden) drawVisualizer();
 }
 function stopVisualizer() {
     if (animationId) {
@@ -911,6 +954,14 @@ function stopVisualizer() {
         animationId = null;
     }
 }
+// 标签页切换时暂停/恢复可视化，节省CPU
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        stopVisualizer();
+    } else if (state.isPlaying) {
+        startVisualizer();
+    }
+});
 function drawVisualizer() {
     animationId = requestAnimationFrame(drawVisualizer);
     const canvas = visualizerCanvas;
@@ -1225,7 +1276,10 @@ window.addEventListener('beforeunload', cleanup);
 // ---------- 初始化 ----------
 async function init() {
     try {
+        initTheme();
         setupMediaSessionActions();
+
+        document.getElementById('themeToggle').addEventListener('click', toggleTheme);
 
         const savedCollapsed = localStorage.getItem('collapsedFolders');
         if (savedCollapsed) {

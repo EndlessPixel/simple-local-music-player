@@ -30,6 +30,58 @@ body {
     overflow: hidden;
 }
 
+/* ===== 深色主题 ===== */
+[data-theme="dark"] {
+    --bg: #1a1a1e;
+    --surface: #26262b;
+    --surface-hover: #333338;
+    --text: #e4e4e8;
+    --text-muted: #9999a3;
+    --text-dim: #6b6b76;
+    --border: #3a3a40;
+    --shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+
+[data-theme="dark"] .album-art {
+    background: #2a2a30;
+    color: #6b6b76;
+}
+
+[data-theme="dark"] .progress-handle { background: #d4d4d8; }
+[data-theme="dark"] .toast-notification { background: #333338; }
+[data-theme="dark"] .changelog-pagination button { background: #333338; }
+[data-theme="dark"] .endpoint-bg,
+[data-theme="dark"] .apidoc-endpoint,
+[data-theme="dark"] .changelog-item { background: #1e1e22; }
+[data-theme="dark"] .volume-wrapper,
+[data-theme="dark"] .search-input,
+[data-theme="dark"] .speed-btn { background: #1e1e22; }
+[data-theme="dark"] .song-item.active { background: rgba(0,122,255,0.15); }
+[data-theme="dark"] .mobile-menu-backdrop { background: rgba(0,0,0,0.5); }
+[data-theme="dark"] .search-input:focus { box-shadow: 0 0 0 3px rgba(0,122,255,0.25); }
+[data-theme="dark"] .changelog-overlay { background: rgba(0,0,0,0.55); }
+[data-theme="dark"] .apidoc-params { background: rgba(255,255,255,0.06); }
+
+/* 主题切换图标 */
+[data-theme="dark"] .header-btn.theme-toggle .icon-sun,
+.header-btn.theme-toggle .icon-moon { transition: transform 0.3s ease, opacity 0.3s ease; }
+
+[data-theme="dark"] .header-btn.theme-toggle .icon-sun { display: none; }
+[data-theme="dark"] .header-btn.theme-toggle .icon-moon { display: block; }
+.header-btn.theme-toggle .icon-moon { display: none; }
+.header-btn.theme-toggle .icon-sun { display: block; }
+
+/* ===== 主题切换过渡 ===== */
+body { transition: background-color 0.35s ease, color 0.35s ease; }
+
+/* ===== 性能优化 ===== */
+.song-list { contain: layout style; }
+.album-art.playing img { will-change: transform; }
+.folder-songs { content-visibility: auto; contain-intrinsic-size: 0 500px; }
+#visualizer { contain: content; }
+.progress-fill { will-change: width; }
+.search-input { will-change: border-color, box-shadow; }
+
 /* ===== 顶部按钮 ===== */
 .header-buttons {
     position: fixed;
