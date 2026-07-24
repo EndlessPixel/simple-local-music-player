@@ -981,8 +981,8 @@ function drawVisualizer() {
     for (let i = 0; i < barCount; i++) {
         const barHeight = (dataArray[i] / 255) * height * 0.8;
         const gradient = ctx.createLinearGradient(0, height - barHeight, 0, height);
-        gradient.addColorStop(0, '#f472b6');
-        gradient.addColorStop(1, '#6366f1');
+        gradient.addColorStop(0, '#007aff');
+        gradient.addColorStop(1, '#1e90ff');
         ctx.fillStyle = gradient;
         const roundedHeight = barHeight > 0 ? Math.max(2, barHeight) : 0;
         const cornerRadius = Math.min(4, roundedHeight / 2);
