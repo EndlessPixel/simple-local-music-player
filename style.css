@@ -589,6 +589,23 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
     font-weight: 500;
     opacity: 1;
 }
+.lyrics-lines::-webkit-scrollbar {
+    width: 4px;
+}
+.lyrics-lines::-webkit-scrollbar-track {
+    background: transparent;
+}
+.lyrics-lines::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+}
+.lyrics-lines::-webkit-scrollbar-thumb:hover {
+    background: var(--text-dim);
+}
+.lyrics-lines {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
 .visualizer-container {
     margin-top: 16px;
 }
