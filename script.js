@@ -532,6 +532,7 @@ downloadBtn.addEventListener('click', () => {
 
 // ---------- 分享功能 ----------
 const shareBtn = document.getElementById('shareBtn');
+const shareMenu = document.getElementById('shareMenu');
 
 function buildShareUrl(folder, song) {
     const params = new URLSearchParams();
@@ -577,21 +578,51 @@ function applyShareLinkFromQuery() {
     playSong(index, false);
 }
 
-shareBtn.addEventListener('click', () => {
+function toggleShareMenu() {
+    if (state.currentIndex === -1) return;
+    const isOpen = shareMenu.classList.toggle('show');
+    if (!isOpen) return;
+    // 点击其他地方关闭
+    const closeMenu = (e) => {
+        if (!shareMenu.contains(e.target) && e.target !== shareBtn) {
+            shareMenu.classList.remove('show');
+            document.removeEventListener('click', closeMenu);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+}
+
+function copyShareUrl(type) {
     if (state.currentIndex === -1) return;
     const { folder, song } = state.flatSongs[state.currentIndex];
-    const accurateUrl = buildShareUrl(folder, song);
-    const shortUrl = buildShortShareUrl(state.currentIndex);
-    const shareText = `高精度（含歌曲名+文件夹，准确性高但链接较长）:\n${accurateUrl}\n\n简短（仅含歌曲ID，链接短但目录变化后可能失效）:\n${shortUrl}`;
+    let url;
+    if (type === 'short') {
+        url = buildShortShareUrl(state.currentIndex);
+    } else {
+        url = buildShareUrl(folder, song);
+    }
+    shareMenu.classList.remove('show');
     if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(shareText).then(() => {
-            showToast('两种分享链接已复制到剪贴板');
+        navigator.clipboard.writeText(url).then(() => {
+            showToast('分享链接已复制到剪贴板');
         }).catch(() => {
-            fallbackCopy(shareText);
+            fallbackCopy(url);
         });
     } else {
-        fallbackCopy(shareText);
+        fallbackCopy(url);
     }
+}
+
+shareBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleShareMenu();
+});
+
+shareMenu.addEventListener('click', (e) => {
+    const option = e.target.closest('.share-option');
+    if (!option) return;
+    const type = option.dataset.type;
+    copyShareUrl(type);
 });
 
 function fallbackCopy(text) {

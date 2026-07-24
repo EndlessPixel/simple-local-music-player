@@ -716,6 +716,56 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
     font-weight: 500;
 }
 
+.share-btn-wrap {
+    position: relative;
+}
+.share-menu {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    right: 0;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 6px;
+    width: 260px;
+    z-index: 100;
+    box-shadow: var(--shadow);
+}
+.share-menu.show {
+    display: flex;
+}
+.share-option {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: none;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 14px;
+    cursor: pointer;
+    text-align: left;
+    color: var(--text);
+    transition: var(--transition);
+}
+.share-option:hover {
+    background: var(--surface-hover);
+}
+.share-option-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+}
+.share-option-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+[data-theme="dark"] .share-option:hover {
+    background: #2a2a35;
+}
+
 .repeat-one-badge {
     position: absolute;
     top: 0;

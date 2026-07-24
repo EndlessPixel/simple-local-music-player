@@ -144,9 +144,21 @@
                         <button class="control-btn" id="downloadBtn" title="下载">
                             <ion-icon name="download" size="small"></ion-icon>
                         </button>
-                        <button class="control-btn" id="shareBtn" title="复制分享链接">
-                            <ion-icon name="share-social" size="small"></ion-icon>
-                        </button>
+                        <div class="share-btn-wrap">
+                            <button class="control-btn" id="shareBtn" title="复制分享链接">
+                                <ion-icon name="share-social" size="small"></ion-icon>
+                            </button>
+                            <div class="share-menu" id="shareMenu">
+                                <button class="share-option" data-type="accurate">
+                                    <span class="share-option-title">高精度链接</span>
+                                    <span class="share-option-desc">含歌曲名+文件夹，准确性高，链接较长</span>
+                                </button>
+                                <button class="share-option" data-type="short">
+                                    <span class="share-option-title">简短链接</span>
+                                    <span class="share-option-desc">仅含歌曲ID，链接短，目录变化后可能失效</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                     <div class="volume-wrapper">
                         <span class="volume-icon">
