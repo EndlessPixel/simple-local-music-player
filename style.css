@@ -61,6 +61,8 @@ body {
 [data-theme="dark"] .search-input:focus { box-shadow: 0 0 0 3px rgba(0,122,255,0.25); }
 [data-theme="dark"] .changelog-overlay { background: rgba(0,0,0,0.55); }
 [data-theme="dark"] .apidoc-params { background: rgba(255,255,255,0.06); }
+[data-theme="dark"] .auto-refresh-toggle { background: #222; border-color: #444; }
+[data-theme="dark"] .auto-refresh-toggle:hover { background: #333; }
 
 /* 主题切换图标 */
 [data-theme="dark"] .header-btn.theme-toggle .icon-sun,
@@ -347,7 +349,35 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
     font-weight: 500;
     display: flex;
     justify-content: space-between;
+    align-items: center;
+    gap: 8px;
     border-bottom: 1px solid var(--border);
+}
+.auto-refresh {
+    flex: 1;
+    text-align: right;
+    white-space: nowrap;
+}
+.auto-refresh-toggle {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--text-muted);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: var(--transition);
+}
+.auto-refresh-toggle:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+}
+.auto-refresh-toggle.active {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
 }
 .song-list {
     flex: 1;
@@ -485,12 +515,24 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
 }
 .song-info-display {
     margin-bottom: 24px;
+    overflow: hidden;
 }
 .current-title {
     font-size: 26px;
     font-weight: 600;
     letter-spacing: -0.02em;
     margin-bottom: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-all;
+}
+.current-artist,
+.current-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .current-artist {
     font-size: 15px;
@@ -966,6 +1008,7 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
     }
     .current-title {
         font-size: 22px;
+        -webkit-line-clamp: 2;
     }
     .side-controls {
         justify-content: center;
