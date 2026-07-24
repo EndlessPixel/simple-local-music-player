@@ -719,6 +719,9 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
     background: var(--primary-hover);
     transform: scale(1.04);
 }
+.speed-btn-wrap {
+    position: relative;
+}
 .speed-btn {
     border-radius: 20px;
     padding: 6px 12px;
