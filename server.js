@@ -1,163 +1,170 @@
 import { createServer } from 'http';
 import https from 'https';
-import { createReadStream, statSync } from 'fs';
+import { createReadStream } from 'fs';
 import { promises as fs } from 'fs';
 import { join, resolve, extname, dirname, parse as parsePath } from 'path';
 import { fileURLToPath } from 'url';
-import { parse } from 'url';
 import { parseFile } from 'music-metadata';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const MUSIC_DIR = join(__dirname, 'music');
-const PORT = 18250;
 
-const AUDIO_EXTS = new Set(['.mp3', '.aac', '.flac', '.wav', '.ogg', '.m4a', '.wma']);
+// ========== 集中配置 ==========
+const CONFIG = {
+    PORT: 18250,
+    MUSIC_DIR: join(__dirname, 'music'),
+    // 缓存上限
+    COVER_MAX_SIZE: 50 * 1024 * 1024,   // 50 MiB
+    META_MAX_SIZE:  10 * 1024 * 1024,   // 10 MiB
+    LYRICS_MAX_SIZE: 2 * 1024 * 1024,   // 2 MiB
+    COVER_MAX_ENTRIES: 50,
+    META_MAX_ENTRIES:  100,
+    LYRICS_MAX_ENTRIES: 200,
+    // 允许的静态文件
+    STATIC_ALLOWED: new Set(['favicon.svg', 'style.css', 'script.js', 'play.html']),
+    // 音频扩展名
+    AUDIO_EXTS: new Set(['.mp3', '.aac', '.flac', '.wav', '.ogg', '.m4a', '.wma']),
+    // MIME 映射
+    MIME_MAP: {
+        '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
+        '.flac': 'audio/flac', '.m4a': 'audio/m4a', '.aac': 'audio/aac',
+        '.wma': 'audio/x-ms-wma', '.html': 'text/html;charset=utf-8',
+        '.js': 'application/javascript;charset=utf-8',
+        '.css': 'text/css;charset=utf-8', '.svg': 'image/svg+xml'
+    },
+    // Content-Security-Policy
+    CSP: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; connect-src 'self' https:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' https:; media-src 'self' blob: data:"
+};
 
-// ---------- 缓存 ----------
-let songMapCache = {};
-let lastCacheMinute = -1;
-let scanPromise = null;
+// ========== 通用 LRU Cache 类 ==========
+class LRUCache {
+    constructor(maxSize, maxEntries) {
+        this._map = new Map();
+        this._size = 0;
+        this.maxSize = maxSize;
+        this.maxEntries = maxEntries;
+    }
 
-const coverCache = new Map(); // key -> { data: Buffer, lastUsed, size }
-const metaCache = new Map();  // key -> { data: object, lastUsed, size }
-const lyricsCache = new Map(); // key -> { data: string|null, lastUsed, size }
-let coverCacheSize = 0;
-let metaCacheSize = 0;
-let lyricsCacheSize = 0;
+    get(key) {
+        const entry = this._map.get(key);
+        if (entry) entry.lastUsed = Date.now();
+        return entry || null;
+    }
 
-const COVER_MAX_SIZE = 50 * 1024 * 1024;   // 50 MiB
-const META_MAX_SIZE = 10 * 1024 * 1024;    // 10 MiB
-const LYRICS_MAX_SIZE = 2 * 1024 * 1024;   // 2 MiB
-const COVER_MAX_ENTRIES = 50;
-const META_MAX_ENTRIES = 100;
-const LYRICS_MAX_ENTRIES = 200;
+    set(key, value) {
+        const entry = { ...value, lastUsed: Date.now() };
+        // 删除旧条目（如果有）
+        const old = this._map.get(key);
+        if (old) this._size -= old.size || 0;
 
-function pruneCache(cache, sizeVar, maxSize, maxEntries) {
-    while (cache.size > maxEntries || sizeVar > maxSize) {
-        let oldestKey = null;
-        let oldestTime = Infinity;
-        for (const [key, entry] of cache) {
-            if (entry.lastUsed < oldestTime) {
-                oldestTime = entry.lastUsed;
-                oldestKey = key;
-            }
+        this._map.set(key, entry);
+        this._size += entry.size || 0;
+        this._prune();
+    }
+
+    has(key) {
+        return this._map.has(key);
+    }
+
+    delete(key) {
+        const entry = this._map.get(key);
+        if (entry) {
+            this._size -= entry.size || 0;
+            this._map.delete(key);
         }
-        if (oldestKey === null) break;
-        const entry = cache.get(oldestKey);
-        sizeVar -= entry.size || 0;
-        cache.delete(oldestKey);
     }
-    return sizeVar;
-}
 
-// ---------- 目录扫描 ----------
-async function scanDir(dir, relPath, map) {
-    try {
-        const items = await fs.readdir(dir);
-        for (const item of items) {
-            const full = join(dir, item);
-            const st = await fs.stat(full);
-            if (st.isDirectory()) {
-                await scanDir(full, relPath ? `${relPath}/${item}` : item, map);
-            } else if (AUDIO_EXTS.has(extname(item).toLowerCase())) {
-                const key = relPath || '.';
-                if (!map[key]) map[key] = [];
-                map[key].push(item);
+    _prune() {
+        while (this._map.size > this.maxEntries || this._size > this.maxSize) {
+            let oldestKey = null, oldestTime = Infinity;
+            for (const [k, e] of this._map) {
+                if (e.lastUsed < oldestTime) { oldestTime = e.lastUsed; oldestKey = k; }
             }
+            if (oldestKey === null) break;
+            const e = this._map.get(oldestKey);
+            this._size -= e.size || 0;
+            this._map.delete(oldestKey);
         }
-    } catch (err) {
-        // 记录错误但不中断，可能部分目录不可读
-        console.error(`扫描目录 ${dir} 失败:`, err.message);
     }
 }
 
-async function getSongMap() {
-    const now = Math.floor(Date.now() / 60000);
-    if (now === lastCacheMinute && songMapCache) return songMapCache;
+// 初始化缓存实例
+const coverCache = new LRUCache(CONFIG.COVER_MAX_SIZE, CONFIG.COVER_MAX_ENTRIES);
+const metaCache = new LRUCache(CONFIG.META_MAX_SIZE, CONFIG.META_MAX_ENTRIES);
+const lyricsCache = new LRUCache(CONFIG.LYRICS_MAX_SIZE, CONFIG.LYRICS_MAX_ENTRIES);
 
-    if (scanPromise) {
-        await scanPromise;
-        return songMapCache;
-    }
-
-    scanPromise = (async () => {
-        const map = {};
-        await scanDir(MUSIC_DIR, '', map);
-        songMapCache = map;
-        lastCacheMinute = now;
-    })();
-
-    try {
-        await scanPromise;
-    } finally {
-        scanPromise = null;
-    }
-    return songMapCache;
-}
-
-// ---------- 路径安全 ----------
-function isSafePathPart(part) {
-    // 禁止 .. 和路径分隔符
-    return part && !part.includes('..') && !part.includes('/') && !part.includes('\\');
-}
-
-function safeStaticPath(reqPath) {
-    // 只允许特定静态文件或 play.html
-    const allowed = ['favicon.svg', 'style.css', 'script.js'];
-    if (allowed.includes(reqPath)) return join(__dirname, reqPath);
-    if (reqPath === 'play.html') return join(__dirname, 'play.html');
-    return null;
+// ========== 统一路径安全校验 ==========
+function validatePath(baseDir, subPath) {
+    if (!subPath) return null;
+    // 解码 URL 编码
+    let decoded = subPath.includes('%') ? decodeURIComponent(subPath) : subPath;
+    // 禁止路径穿越
+    if (/^\.\./.test(decoded) || /\/\.\./.test(decoded)) return null;
+    // 禁止路径分隔符在单段中出现（folder 段检查走 isSafePathPart）
+    const resolved = resolve(join(baseDir, decoded));
+    if (!resolved.startsWith(resolve(baseDir))) return null;
+    return resolved;
 }
 
 function safeMusicPath(folder, song) {
     if (!song) return null;
-
-    let decodedSong = song;
-    let decodedFolder = folder || '';
-    
-    if (song.includes('%')) {
-        decodedSong = decodeURIComponent(song);
-    }
-    if (folder && folder.includes('%')) {
-        decodedFolder = decodeURIComponent(folder);
-    }
-
-    if (/^\.\./.test(decodedSong) || /\/\.\./.test(decodedSong)) return null;
-
-    if (decodedFolder) {
-        const parts = decodedFolder.split('/');
-        for (const part of parts) {
-            if (!isSafePathPart(part)) return null;
+    // song 段安全 + 反穿越
+    const filePath = validatePath(CONFIG.MUSIC_DIR, folder ? `${folder}/${song}` : song);
+    if (!filePath) return null;
+    // 额外校验：folder 中每段安全
+    if (folder) {
+        for (const part of folder.split('/')) {
+            if (!part || part.includes('..') || part.includes('\\')) return null;
         }
     }
-
-    const filePath = decodedFolder ? join(MUSIC_DIR, decodedFolder, decodedSong) : join(MUSIC_DIR, decodedSong);
-    const resolved = resolve(filePath);
-    if (!resolved.startsWith(MUSIC_DIR)) return null;
-    return resolved;
+    return filePath;
 }
 
-// ---------- MIME 和 Range ----------
-const MIME_MAP = {
-    '.mp3': 'audio/mpeg',
-    '.wav': 'audio/wav',
-    '.ogg': 'audio/ogg',
-    '.flac': 'audio/flac',
-    '.m4a': 'audio/m4a',
-    '.aac': 'audio/aac',
-    '.wma': 'audio/x-ms-wma',
-    '.html': 'text/html;charset=utf-8',
-    '.js': 'application/javascript;charset=utf-8',
-    '.css': 'text/css;charset=utf-8',
-    '.svg': 'image/svg+xml'
+function safeStaticPath(reqPath) {
+    if (reqPath === '') return join(__dirname, 'play.html'); // '/'
+    if (CONFIG.STATIC_ALLOWED.has(reqPath)) return join(__dirname, reqPath);
+    return null;
+}
+
+// ========== 响应头 ==========
+const CORS_HEADERS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS, HEAD',
+    'Access-Control-Allow-Headers': '*'
 };
 
-function getMime(file) {
-    const ext = extname(file).toLowerCase();
-    return MIME_MAP[ext] || 'application/octet-stream';
+const JSON_HEADER = { 'Content-Type': 'application/json' };
+
+function setCommonHeaders(res) {
+    for (const [k, v] of Object.entries(CORS_HEADERS)) {
+        res.setHeader(k, v);
+    }
+    res.setHeader('Content-Security-Policy', CONFIG.CSP);
 }
 
+function sendJSON(res, code, data) {
+    res.writeHead(code, JSON_HEADER);
+    res.end(JSON.stringify(data));
+}
+
+// ========== 通用 HTTPS 代理 ==========
+function proxyRequest(url, options, res) {
+    return new Promise((resolve, reject) => {
+        https.get(url, { rejectUnauthorized: false, ...options }, proxyRes => {
+            const headers = {};
+            for (const [k, v] of Object.entries(proxyRes.headers)) {
+                if (k.toLowerCase() !== 'set-cookie') headers[k] = v;
+            }
+            if (options.responseHeaders) Object.assign(headers, options.responseHeaders);
+            res.writeHead(proxyRes.statusCode, headers);
+            proxyRes.pipe(res);
+            proxyRes.on('end', resolve);
+            proxyRes.on('error', reject);
+        }).on('error', reject);
+    });
+}
+
+// ========== Range 解析 ==========
 function parseRange(range, size) {
     const m = range?.match(/bytes=(\d*)-(\d*)/);
     if (!m) return null;
@@ -171,204 +178,175 @@ function parseRange(range, size) {
     return { start: s, end: e, len: e - s + 1 };
 }
 
-// ---------- 发送文件（支持 Range、HEAD、流错误处理） ----------
-function sendFile(res, filePath, rangeHeader, method, req) {
+// ========== 异步 sendFile ==========
+async function sendFile(res, filePath, rangeHeader, method, req) {
     try {
-        const st = statSync(filePath);
+        const st = await fs.stat(filePath);
         if (!st.isFile()) throw new Error('Not a file');
-        const size = st.size;
-        const mime = getMime(filePath);
-        const isAudio = AUDIO_EXTS.has(extname(filePath).toLowerCase());
+        const { size } = st;
+        const mime = CONFIG.MIME_MAP[extname(filePath).toLowerCase()] || 'application/octet-stream';
+        const isAudio = CONFIG.AUDIO_EXTS.has(extname(filePath).toLowerCase());
 
-        // HEAD 请求：只发头部
+        const writeHead = (code, extraHeaders = {}) => {
+            res.writeHead(code, {
+                'Content-Type': mime,
+                'Accept-Ranges': 'bytes',
+                ...extraHeaders
+            });
+        };
+
+        // HEAD 请求
         if (method === 'HEAD') {
-            if (!isAudio) {
-                res.writeHead(200, {
-                    'Content-Type': mime,
-                    'Content-Length': size,
-                    'Accept-Ranges': 'bytes'
-                });
+            const r = isAudio ? parseRange(rangeHeader, size) : null;
+            if (r) {
+                writeHead(206, { 'Content-Length': r.len, 'Content-Range': `bytes ${r.start}-${r.end}/${size}` });
             } else {
-                // 支持 range 响应头部（不发送 body）
-                const r = parseRange(rangeHeader, size);
-                if (r) {
-                    res.writeHead(206, {
-                        'Content-Type': mime,
-                        'Content-Length': r.len,
-                        'Content-Range': `bytes ${r.start}-${r.end}/${size}`,
-                        'Accept-Ranges': 'bytes'
-                    });
-                } else {
-                    res.writeHead(200, {
-                        'Content-Type': mime,
-                        'Content-Length': size,
-                        'Accept-Ranges': 'bytes'
-                    });
-                }
+                writeHead(200, { 'Content-Length': size });
             }
-            res.end();
-            return;
+            return res.end();
         }
 
-        // GET 请求
+        // GET：无 Range 或非音频
         if (!isAudio || !rangeHeader) {
-            res.writeHead(200, {
-                'Content-Type': mime,
-                'Content-Length': size,
-                'Accept-Ranges': 'bytes'
-            });
+            writeHead(200, { 'Content-Length': size });
             const stream = createReadStream(filePath);
             stream.on('error', () => {
-                if (!res.headersSent) {
-                    res.writeHead(500).end('Stream Error');
-                } else {
-                    res.end();
-                }
+                if (!res.headersSent) res.writeHead(500).end('Stream Error');
+                else res.end();
             });
             req.on('close', () => stream.destroy());
-            stream.pipe(res);
-            return;
+            return stream.pipe(res);
         }
 
-        // 音频 Range
+        // 音频 Range 请求
         const r = parseRange(rangeHeader, size);
         if (!r) {
-            res.writeHead(416, { 'Content-Range': `bytes */${size}` }).end();
-            return;
+            return res.writeHead(416, { 'Content-Range': `bytes */${size}` }).end();
         }
-        res.writeHead(206, {
-            'Content-Type': mime,
-            'Content-Length': r.len,
-            'Content-Range': `bytes ${r.start}-${r.end}/${size}`,
-            'Accept-Ranges': 'bytes'
-        });
+        writeHead(206, { 'Content-Length': r.len, 'Content-Range': `bytes ${r.start}-${r.end}/${size}` });
         const stream = createReadStream(filePath, { start: r.start, end: r.end });
         stream.on('error', () => {
-            if (!res.headersSent) {
-                res.writeHead(500).end('Stream Error');
-            } else {
-                res.end();
-            }
+            if (!res.headersSent) res.writeHead(500).end('Stream Error');
+            else res.end();
         });
         req.on('close', () => stream.destroy());
         stream.pipe(res);
     } catch {
-        if (!res.headersSent) {
-            res.writeHead(500).end('Internal Server Error');
-        }
+        if (!res.headersSent) res.writeHead(500).end('Internal Server Error');
     }
 }
 
-// ---------- 元数据与封面提取（带失败缓存） ----------
+// ========== 缓存条目有效性（仅 mtime + size）==========
+async function cacheEntryValid(filePath, entry) {
+    try {
+        const st = await fs.stat(filePath);
+        if (st.mtimeMs === entry.mtimeMs && st.size === entry.fileSize) return true;
+        console.log(`[cache] mtime/size变化，缓存失效: ${filePath}`);
+        return false;
+    } catch {
+        return false;
+    }
+}
+
+// ========== 封面 / 元数据 / 歌词（用 LRUCache）==========
 async function getCoverFromFile(filePath) {
-    if (coverCache.has(filePath)) {
-        const entry = coverCache.get(filePath);
-        entry.lastUsed = Date.now();
+    const entry = coverCache.get(filePath);
+    if (entry && await cacheEntryValid(filePath, entry)) {
         return entry.data ? { data: entry.data, mime: entry.mime } : null;
     }
+    coverCache.delete(filePath);
 
     try {
+        const st = await fs.stat(filePath);
         const metadata = await parseFile(filePath, { skipCovers: false });
-        if (metadata.common.picture && metadata.common.picture.length > 0) {
+        if (metadata.common.picture?.length > 0) {
             const pic = metadata.common.picture[0];
-            const data = pic.data;
-            const mime = pic.format || 'image/jpeg';
-            coverCache.set(filePath, { data, mime, lastUsed: Date.now(), size: data.length });
-            coverCacheSize += data.length;
-            coverCacheSize = pruneCache(coverCache, coverCacheSize, COVER_MAX_SIZE, COVER_MAX_ENTRIES);
+            const data = pic.data, mime = pic.format || 'image/jpeg';
+            coverCache.set(filePath, { data, mime, size: data.length, mtimeMs: st.mtimeMs, fileSize: st.size });
             return { data, mime };
         }
-        // 没有封面，缓存 null
-        coverCache.set(filePath, { data: null, mime: null, lastUsed: Date.now(), size: 0 });
+        coverCache.set(filePath, { data: null, mime: null, size: 0, mtimeMs: st.mtimeMs, fileSize: st.size });
         return null;
     } catch {
-        coverCache.set(filePath, { data: null, mime: null, lastUsed: Date.now(), size: 0 });
+        coverCache.set(filePath, { data: null, mime: null, size: 0, mtimeMs: 0, fileSize: 0 });
         return null;
     }
 }
 
 async function getMetaFromFile(filePath) {
-    if (metaCache.has(filePath)) {
-        const entry = metaCache.get(filePath);
-        entry.lastUsed = Date.now();
-        return entry.data;
-    }
+    const entry = metaCache.get(filePath);
+    if (entry && await cacheEntryValid(filePath, entry)) return entry.data;
+    metaCache.delete(filePath);
 
     try {
+        const st = await fs.stat(filePath);
         const metadata = await parseFile(filePath, { skipCovers: true });
         const data = {
             artist: metadata.common.artist || null,
             title: metadata.common.title || null,
             duration: metadata.format.duration || null
         };
-        const size = JSON.stringify(data).length;
-        metaCache.set(filePath, { data, lastUsed: Date.now(), size });
-        metaCacheSize += size;
-        metaCacheSize = pruneCache(metaCache, metaCacheSize, META_MAX_SIZE, META_MAX_ENTRIES);
+        metaCache.set(filePath, { data, size: JSON.stringify(data).length, mtimeMs: st.mtimeMs, fileSize: st.size });
         return data;
     } catch {
         const empty = { artist: null, title: null, duration: null };
-        const size = JSON.stringify(empty).length;
-        metaCache.set(filePath, { data: empty, lastUsed: Date.now(), size });
-        metaCacheSize += size;
-        metaCacheSize = pruneCache(metaCache, metaCacheSize, META_MAX_SIZE, META_MAX_ENTRIES);
+        metaCache.set(filePath, { data: empty, size: 0, mtimeMs: 0, fileSize: 0 });
         return empty;
     }
 }
 
-async function getLyricsForFile(filePath) {
-    if (lyricsCache.has(filePath)) {
-        const entry = lyricsCache.get(filePath);
-        if (entry.data !== null) {
-            entry.lastUsed = Date.now();
-            return entry.data;
+// LRC 文件名匹配：尝试 {name}.lrc、{name}_歌词.lrc、{name}-歌词.lrc
+const LRC_SUFFIXES = ['', '_歌词', '-歌词', '_lrc', '-lrc', '_lyric', '-lyric'];
+
+function findLrcFile(songBase) {
+    const candidates = LRC_SUFFIXES.flatMap(suf => ['.lrc', '.LRC'].map(ext => `${songBase}${suf}${ext}`));
+    // 同时检查 songBase 本身的大写变体
+    candidates.push(...[`.LRC`, `.lrc`].map(ext => `${songBase}${ext}`));
+    // 精确同名优先
+    const unique = [...new Set([`${songBase}.lrc`, `${songBase}.LRC`, ...candidates.filter(c => !c.startsWith(songBase + '.'))])];
+    return unique;
+}
+
+async function findLrcInDir(dir, songBase) {
+    try {
+        const entries = await fs.readdir(dir);
+        const lowerEntries = new Map(entries.map(e => [e.toLowerCase(), e]));
+        const candidates = findLrcFile(songBase);
+        for (const c of candidates) {
+            const match = lowerEntries.get(c.toLowerCase());
+            if (match) return match;
         }
-        // cache 中 data 为 null，重新读取
-        console.log(`[lyrics] 前次无歌词，重新尝试读取: ${filePath}`);
+    } catch {}
+    return null;
+}
+
+async function getLyricsForFile(filePath) {
+    const entry = lyricsCache.get(filePath);
+    if (entry) {
+        if (entry.data !== null && await cacheEntryValid(filePath, entry)) return entry.data;
         lyricsCache.delete(filePath);
     }
 
-    let lyrics = null;
-    let source = 'none';
+    let lyrics = null, source = 'none';
 
     try {
-        // 优先：读取音频内嵌歌词
         const metadata = await parseFile(filePath, { skipCovers: true });
-        if (metadata.common.lyrics && metadata.common.lyrics.length > 0) {
+        if (metadata.common.lyrics?.length > 0) {
             lyrics = metadata.common.lyrics[0].text || null;
-            if (lyrics) {
-                source = 'embedded';
-                console.log(`[lyrics] 内嵌歌词: ${filePath} (${lyrics.length}字符)`);
-            }
+            if (lyrics) { source = 'embedded'; console.log(`[lyrics] 内嵌歌词: ${filePath} (${lyrics.length}字符)`); }
         }
     } catch (err) {
         console.log(`[lyrics] parseFile失败: ${filePath} -> ${err.message}`);
     }
 
-    // 回退：同目录下匹配 .lrc 文件（忽略大小写，忽略 _歌词/-歌词 等后缀）
     if (!lyrics) {
         try {
             const { dir, name: songBase } = parsePath(filePath);
-            const songBaseLower = songBase.toLowerCase();
-            const dirEntries = await fs.readdir(dir);
-            console.log(`[lyrics] 查找LRC: dir=${dir} base=${songBase} 目录文件=${dirEntries.length}个`);
-            const lrcFile = dirEntries.find(name => {
-                const extIdx = name.lastIndexOf('.');
-                if (extIdx === -1) return false;
-                if (name.substring(extIdx).toLowerCase() !== '.lrc') return false;
-                const lrcBase = name.substring(0, extIdx);
-                const lrcBaseLower = lrcBase.toLowerCase();
-                if (lrcBaseLower === songBaseLower) return true;
-                if (lrcBaseLower.startsWith(songBaseLower)) {
-                    const suffix = lrcBase.substring(songBase.length);
-                    if (/^[_-]?(歌词|lrc|lyric|lyrics?|krc)$/i.test(suffix)) return true;
-                }
-                return false;
-            });
-            if (lrcFile) {
-                const lrcPath = join(dir, lrcFile);
-                const resolved = resolve(lrcPath);
-                if (resolved.startsWith(MUSIC_DIR)) {
+            console.log(`[lyrics] 查找LRC: dir=${dir} base=${songBase}`);
+            const lrcName = await findLrcInDir(dir, songBase);
+            if (lrcName) {
+                const lrcPath = join(dir, lrcName);
+                if (resolve(lrcPath).startsWith(resolve(CONFIG.MUSIC_DIR))) {
                     lyrics = await fs.readFile(lrcPath, 'utf-8');
                     source = 'lrc';
                     console.log(`[lyrics] 外部LRC: ${lrcPath} (${lyrics.length}字符)`);
@@ -381,221 +359,163 @@ async function getLyricsForFile(filePath) {
         }
     }
 
+    let st = null;
+    try { st = await fs.stat(filePath); } catch {}
     console.log(`[lyrics] 结果: ${filePath} -> source=${source}, size=${lyrics ? lyrics.length : 0}`);
-    const size = lyrics ? Buffer.byteLength(lyrics, 'utf-8') : 0;
-    lyricsCache.set(filePath, { data: lyrics, lastUsed: Date.now(), size });
-    lyricsCacheSize += size;
-    lyricsCacheSize = pruneCache(lyricsCache, lyricsCacheSize, LYRICS_MAX_SIZE, LYRICS_MAX_ENTRIES);
+    lyricsCache.set(filePath, {
+        data: lyrics, size: lyrics ? Buffer.byteLength(lyrics, 'utf-8') : 0,
+        mtimeMs: st ? st.mtimeMs : 0, fileSize: st ? st.size : 0
+    });
     return lyrics;
 }
 
-// ---------- 日志（脱敏） ----------
-function log(req, res, startTime) {
-    const ip = req.socket.remoteAddress;
-    const duration = Date.now() - startTime;
-    const { pathname } = parse(req.url);
-    const displayUrl = pathname || req.url;
-    console.log(`[${new Date().toLocaleString()}] ${req.method} ${displayUrl} → ${res.statusCode} | ${ip} | ${duration}ms`);
+// ========== 扫描：仅启动时扫描 + 手动刷新 API ==========
+let songMap = {};
+
+async function fullScan() {
+    const map = {};
+    async function scan(dir, relPath) {
+        try {
+            const items = await fs.readdir(dir);
+            for (const item of items) {
+                const full = join(dir, item);
+                const st = await fs.stat(full);
+                if (st.isDirectory()) {
+                    await scan(full, relPath ? `${relPath}/${item}` : item);
+                } else if (CONFIG.AUDIO_EXTS.has(extname(item).toLowerCase())) {
+                    const key = relPath || '.';
+                    (map[key] ??= []).push(item);
+                }
+            }
+        } catch (err) {
+            console.error(`扫描目录 ${dir} 失败:`, err.message);
+        }
+    }
+    await scan(CONFIG.MUSIC_DIR, '');
+    songMap = map;
+    console.log(`[scan] 扫描完成，共 ${Object.values(map).flat().length} 首歌曲`);
 }
 
-// ---------- 主服务器 ----------
+async function getSongMap() {
+    return songMap;
+}
+
+// ========== 日志 ==========
+function log(req, res, startTime) {
+    const { pathname } = new URL(req.url, 'http://localhost');
+    console.log(`[${new Date().toLocaleString()}] ${req.method} ${pathname || req.url} → ${res.statusCode} | ${req.socket.remoteAddress} | ${Date.now() - startTime}ms`);
+}
+
+// ========== API 校验辅助 ==========
+function resolveSongParam(query) {
+    const { folder = '', song } = query;
+    if (!song) return null;
+    const filePath = safeMusicPath(folder, song);
+    if (!filePath) return null;
+    return filePath;
+}
+
+// ========== 主服务器 ==========
 const server = createServer(async (req, res) => {
     const startTime = Date.now();
     res.on('finish', () => log(req, res, startTime));
+    setCommonHeaders(res);
 
-    // CORS
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-    // Content Security Policy: 允许本域脚本、样式、图片及与 https: 源的连接（本地部署可根据需要放宽/收紧）
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; connect-src 'self' https:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' https:; media-src 'self' blob: data:");
+    if (req.method === 'OPTIONS') return res.writeHead(204).end();
 
-    if (req.method === 'OPTIONS') {
-        res.writeHead(204).end();
-        return;
-    }
-
-    const { pathname, query } = parse(req.url, true);
+    const u = new URL(req.url, 'http://localhost');
+    const { pathname } = u;
+    const query = Object.fromEntries(u.searchParams.entries());
 
     try {
-        // ---------- API: /api/songs ----------
+        // ---- /api/songs ----
         if (pathname === '/api/songs') {
-            const map = await getSongMap();
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify(map));
-            return;
+            return sendJSON(res, 200, await getSongMap());
         }
 
-        // ---------- API: /api/cover ----------
+        // ---- /api/refresh（手动刷新扫描）----
+        if (pathname === '/api/refresh' && req.method === 'POST') {
+            fullScan().then(() => {});
+            return sendJSON(res, 202, { status: 'scanning' });
+        }
+
+        // ---- /api/cover ----
         if (pathname === '/api/cover') {
-            const folder = query.folder || '';
-            const song = query.song;
-            if (!song) {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Missing song parameter' }));
-                return;
-            }
-
-            const filePath = safeMusicPath(folder, song);
-            if (!filePath) {
-                res.writeHead(403, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Forbidden' }));
-                return;
-            }
-
-            const cover = await getCoverFromFile(filePath);
+            const fp = resolveSongParam(query);
+            if (!fp) return sendJSON(res, 403, { error: 'Forbidden' });
+            const cover = await getCoverFromFile(fp);
             if (cover) {
-                res.writeHead(200, {
-                    'Content-Type': cover.mime,
-                    'Content-Length': cover.data.length,
-                    'Cache-Control': 'public, max-age=86400'
-                });
-                res.end(cover.data);
-            } else {
-                res.writeHead(404).end('No cover');
+                res.writeHead(200, { 'Content-Type': cover.mime, 'Content-Length': cover.data.length, 'Cache-Control': 'public, max-age=86400' });
+                return res.end(cover.data);
             }
-            return;
+            return res.writeHead(404).end('No cover');
         }
 
-        // ---------- API: /api/meta ----------
+        // ---- /api/meta ----
         if (pathname === '/api/meta') {
-            const folder = query.folder || '';
-            const song = query.song;
-            if (!song) {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Missing song parameter' }));
-                return;
-            }
-
-            const filePath = safeMusicPath(folder, song);
-            if (!filePath) {
-                res.writeHead(403, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Forbidden' }));
-                return;
-            }
-
-            const meta = await getMetaFromFile(filePath);
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify(meta));
-            return;
+            const fp = resolveSongParam(query);
+            if (!fp) return sendJSON(res, 403, { error: 'Forbidden' });
+            return sendJSON(res, 200, await getMetaFromFile(fp));
         }
 
-        // ---------- API: /api/lyrics ----------
+        // ---- /api/lyrics ----
         if (pathname === '/api/lyrics') {
-            const folder = query.folder || '';
-            const song = query.song;
-            if (!song) {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Missing song parameter' }));
-                return;
-            }
-
-            const filePath = safeMusicPath(folder, song);
-            if (!filePath) {
-                res.writeHead(403, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Forbidden' }));
-                return;
-            }
-
-            const lyrics = await getLyricsForFile(filePath);
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ lyrics }));
-            return;
+            const fp = resolveSongParam(query);
+            if (!fp) return sendJSON(res, 403, { error: 'Forbidden' });
+            return sendJSON(res, 200, { lyrics: await getLyricsForFile(fp) });
         }
 
-        // ---------- Ionicons 代理 ----------
+        // ---- Ionicons 代理 ----
         if (pathname.startsWith('/ionicons/')) {
-            const targetUrl = `https://unpkg.com/ionicons@7.1.0/dist/ionicons${pathname.replace('/ionicons', '')}`;
-            https.get(targetUrl, {
-                rejectUnauthorized: false
-            }, (proxyRes) => {
-                const headers = {};
-                for (const [key, value] of Object.entries(proxyRes.headers)) {
-                    if (key.toLowerCase() !== 'set-cookie') {
-                        headers[key] = value;
-                    }
-                }
-                res.writeHead(proxyRes.statusCode, headers);
-                proxyRes.pipe(res);
-            }).on('error', (err) => {
+            const target = `https://unpkg.com/ionicons@7.1.0/dist/ionicons${pathname.replace('/ionicons', '')}`;
+            return await proxyRequest(target, {}, res).catch(err => {
                 console.error('Ionicons proxy error:', err);
                 res.writeHead(500).end('Proxy Error');
             });
-            return;
         }
 
-        // ---------- 更新日志代理 ----------
+        // ---- GitHub commits 代理 ----
         if (pathname.startsWith('/api/commits')) {
-            const { query } = parse(req.url);
-            const queryStr = query ? `?${query}` : '';
-            const targetUrl = `https://api.github.com/repos/EndlessPixel/simple-local-music-player/commits${queryStr}`;
-
-            https.get(targetUrl, {
-                headers: {
-                    'User-Agent': 'simple-local-music-player',
-                    'Accept': 'application/json'
-                },
-                rejectUnauthorized: false
-            }, (proxyRes) => {
-                let data = '';
-                proxyRes.on('data', (chunk) => data += chunk);
-                proxyRes.on('end', () => {
-                    res.writeHead(proxyRes.statusCode, {
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*'
-                    });
-                    res.end(data);
-                });
-            }).on('error', (err) => {
+            const qs = u.searchParams.toString();
+            const target = `https://api.github.com/repos/EndlessPixel/simple-local-music-player/commits${qs ? '?' + qs : ''}`;
+            try {
+                await proxyRequest(target, {
+                    headers: { 'User-Agent': 'simple-local-music-player', 'Accept': 'application/json' },
+                    responseHeaders: JSON_HEADER
+                }, res);
+            } catch (err) {
                 console.error('Proxy error:', err);
-                res.writeHead(500).end(JSON.stringify({ error: err.message }));
-            });
-            return;
-        }
-
-        // ---------- API 文档 ----------
-        // ---------- 音乐文件 ----------
-        const ext = extname(pathname).toLowerCase();
-        if (AUDIO_EXTS.has(ext)) {
-            const parts = pathname.slice(1).split('/');
-            const song = parts.pop();
-            const folder = parts.length > 0 ? parts.join('/') : '';
-            const filePath = safeMusicPath(folder, song);
-            if (!filePath) {
-                res.writeHead(403).end('Forbidden');
-                return;
+                if (!res.headersSent) sendJSON(res, 500, { error: err.message });
             }
-            sendFile(res, filePath, req.headers.range, req.method, req);
             return;
         }
 
-        // ---------- 静态文件 ----------
-        let staticPath = null;
-        if (pathname === '/') {
-            staticPath = join(__dirname, 'play.html');
-        } else {
-            const base = pathname.slice(1); // 去掉前导 /
-            staticPath = safeStaticPath(base);
+        // ---- 音乐文件 ----
+        const ext = extname(pathname).toLowerCase();
+        if (CONFIG.AUDIO_EXTS.has(ext)) {
+            const parts = pathname.slice(1).split('/');
+            const song = parts.pop(), folder = parts.join('/');
+            const fp = safeMusicPath(folder, song);
+            if (!fp) return res.writeHead(403).end('Forbidden');
+            return await sendFile(res, fp, req.headers.range, req.method, req);
         }
 
-        if (!staticPath) {
-            res.writeHead(403).end('Forbidden');
-            return;
-        }
+        // ---- 静态文件 ----
+        const sp = safeStaticPath(pathname === '/' ? '' : pathname.slice(1));
+        if (!sp) return res.writeHead(403).end('Forbidden');
+        return await sendFile(res, sp, req.headers.range, req.method, req);
 
-        sendFile(res, staticPath, req.headers.range, req.method, req);
     } catch (err) {
         console.error('Unhandled error:', err);
-        if (!res.headersSent) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Internal Server Error' }));
-        } else {
-            res.end();
-        }
+        if (!res.headersSent) sendJSON(res, 500, { error: 'Internal Server Error' });
+        else res.end();
     }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`音乐服务已启动，端口 ${PORT}`);
-    console.log(`访问地址：http://localhost:${PORT}`);
+// ========== 启动：扫描后监听 ==========
+fullScan().then(() => {
+    server.listen(CONFIG.PORT, '0.0.0.0', () => {
+        console.log(`音乐服务已启动，端口 ${CONFIG.PORT}`);
+        console.log(`访问地址：http://localhost:${CONFIG.PORT}`);
+    });
 });
