@@ -519,7 +519,7 @@ fullScan().then(() => {
     server.listen(CONFIG.PORT, '0.0.0.0', () => {
         console.log(`音乐服务已启动，端口 ${CONFIG.PORT}`);
         console.log(`访问地址：http://localhost:${CONFIG.PORT}`);
-        // 每 30 分钟自动重新扫描目录
+        // 每 1 分钟自动重新扫描目录
         setInterval(() => {
             console.log('[scan] 定时扫描触发（1分钟）');
             fullScan().catch(err => console.error('[scan] 定时扫描失败:', err.message));
