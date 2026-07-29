@@ -33,7 +33,9 @@ const CONFIG = {
         '.css': 'text/css;charset=utf-8', '.svg': 'image/svg+xml'
     },
     // Content-Security-Policy
-    CSP: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; connect-src 'self' https:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' https:; media-src 'self' blob: data:"
+    CSP: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; connect-src 'self' https:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' https:; media-src 'self' blob: data:",
+    // 扫描间隔（毫秒）
+    SCAN_INTERVAL_MS: 1 * 60 * 1000   // 1 分钟
 };
 
 // ========== 通用 LRU Cache 类 ==========
@@ -517,5 +519,10 @@ fullScan().then(() => {
     server.listen(CONFIG.PORT, '0.0.0.0', () => {
         console.log(`音乐服务已启动，端口 ${CONFIG.PORT}`);
         console.log(`访问地址：http://localhost:${CONFIG.PORT}`);
+        // 每 30 分钟自动重新扫描目录
+        setInterval(() => {
+            console.log('[scan] 定时扫描触发（1分钟）');
+            fullScan().catch(err => console.error('[scan] 定时扫描失败:', err.message));
+        }, CONFIG.SCAN_INTERVAL_MS);
     });
 });
