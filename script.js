@@ -56,7 +56,8 @@ const state = {
     pendingAutoPlay: false,
     pendingListener: null,
     searchHistory: [],
-    lastSearchTerm: ''
+    lastSearchTerm: '',
+    searchMode: 'normal'   // 'normal' | 'regex'
 };
 const SEARCH_HISTORY_KEY = 'musicSearchHistory';
 const MAX_SEARCH_HISTORY = 20;
@@ -65,6 +66,8 @@ const songList = document.getElementById('songList');
 const songCount = document.getElementById('songCount');
 const searchInput = document.getElementById('searchInput');
 const refreshBtn = document.getElementById('refreshBtn');
+const modeNormalBtn = document.getElementById('modeNormalBtn');
+const modeRegexBtn = document.getElementById('modeRegexBtn');
 const searchHistoryEl = document.getElementById('searchHistory');
 const searchHistoryList = document.getElementById('searchHistoryList');
 const clearHistoryBtn = document.getElementById('clearHistoryBtn');
@@ -123,11 +126,43 @@ function escapeHtml(text) {
 
 function highlightMatches(text, query) {
     if (!query || !query.trim()) return escapeHtml(text);
-    // 先转义HTML安全文本，再在转义后的文本中匹配高亮
     const safeText = escapeHtml(text);
-    const safeQuery = escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(${safeQuery})`, 'gi');
+    let regex;
+    if (state.searchMode === 'regex') {
+        try {
+            regex = new RegExp(`(${query})`, 'gi');
+        } catch {
+            // 非法正则：不高亮，原样返回
+            return safeText;
+        }
+    } else {
+        const safeQuery = escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        regex = new RegExp(`(${safeQuery})`, 'gi');
+    }
     return safeText.replace(regex, '<mark class="search-highlight">$1</mark>');
+}
+
+function isRegexValid(pattern) {
+    try {
+        new RegExp(pattern);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+// 判断歌曲名是否匹配当前过滤条件（普通模式/正则模式）
+function matchesFilter(name, filter) {
+    if (!filter || !filter.trim()) return true;
+    if (state.searchMode === 'regex') {
+        if (!isRegexValid(filter)) return true; // 非法正则：不过滤，避免误清空列表
+        try {
+            return new RegExp(filter, 'i').test(name);
+        } catch {
+            return true;
+        }
+    }
+    return name.toLowerCase().includes(filter.toLowerCase());
 }
 
 // ---------- 播放错误处理增强 ----------
@@ -781,8 +816,26 @@ volumeSlider.addEventListener('input', () => {
 });
 
 // ---------- 搜索 ----------
+function setSearchMode(mode) {
+    state.searchMode = mode;
+    const isRegex = mode === 'regex';
+    modeNormalBtn.classList.toggle('active', !isRegex);
+    modeRegexBtn.classList.toggle('active', isRegex);
+    searchInput.placeholder = isRegex ? '输入正则表达式，如 周杰伦|林俊杰' : '搜索音乐...';
+    searchInput.classList.remove('regex-invalid');
+    // 重新渲染当前结果
+    renderSongList(state.songs, searchInput.value);
+}
+
+modeNormalBtn.addEventListener('click', () => setSearchMode('normal'));
+modeRegexBtn.addEventListener('click', () => setSearchMode('regex'));
+
 searchInput.addEventListener('input', debounce((e) => {
     const value = e.target.value;
+    // 正则模式下，非法正则给出视觉提示
+    if (state.searchMode === 'regex') {
+        searchInput.classList.toggle('regex-invalid', value.trim() !== '' && !isRegexValid(value));
+    }
     renderSongList(state.songs, value);
     if (value.trim()) showSearchHistory();
     else hideSearchHistory();
@@ -1013,9 +1066,7 @@ function renderSongList(songs, filter = '') {
         return a.localeCompare(b);
     });
     for (const folder of folders) {
-        const songsInFolder = songs[folder].filter(name =>
-            filter === '' || name.toLowerCase().includes(filter.toLowerCase())
-        );
+        const songsInFolder = songs[folder].filter(name => matchesFilter(name, filter));
         if (songsInFolder.length === 0) continue;
         const isCollapsed = state.collapsedFolders.has(folder);
         const group = document.createElement('div');
@@ -1409,12 +1460,6 @@ function buildApiDoc() {
     });
 
     return html;
-}
-
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
 }
 
 document.addEventListener('DOMContentLoaded', () => {

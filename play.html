@@ -49,20 +49,26 @@
                     </div>
                     <span class="logo-text">Music Player</span>
                 </div>
-                <div class="search-wrapper">
-                    <span class="search-icon">
-                        <ion-icon name="search" size="small"></ion-icon>
-                    </span>
-                    <input type="text" class="search-input" id="searchInput" placeholder="搜索音乐..." />
-                    <button class="refresh-btn" id="refreshBtn" title="刷新列表">
-                        <ion-icon name="refresh-circle" size="small"></ion-icon>
-                    </button>
-                    <div class="search-history" id="searchHistory">
-                        <div class="search-history-header">
-                            <span class="search-history-title">搜索历史</span>
-                            <button class="search-history-clear" id="clearHistoryBtn">清空全部</button>
+                <div class="search-container">
+                    <div class="search-mode-toggle" id="searchModeToggle">
+                        <button class="mode-btn active" id="modeNormalBtn" title="普通文本匹配">普通</button>
+                        <button class="mode-btn" id="modeRegexBtn" title="正则表达式匹配">正则</button>
+                    </div>
+                    <div class="search-wrapper">
+                        <span class="search-icon">
+                            <ion-icon name="search" size="small"></ion-icon>
+                        </span>
+                        <input type="text" class="search-input" id="searchInput" placeholder="搜索音乐..." />
+                        <button class="refresh-btn" id="refreshBtn" title="刷新列表">
+                            <ion-icon name="refresh-circle" size="small"></ion-icon>
+                        </button>
+                        <div class="search-history" id="searchHistory">
+                            <div class="search-history-header">
+                                <span class="search-history-title">搜索历史</span>
+                                <button class="search-history-clear" id="clearHistoryBtn">清空全部</button>
+                            </div>
+                            <div class="search-history-list" id="searchHistoryList"></div>
                         </div>
-                        <div class="search-history-list" id="searchHistoryList"></div>
                     </div>
                 </div>
             </div>
