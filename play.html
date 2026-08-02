@@ -81,6 +81,11 @@
                         <button id="playlistDeleteBtn" class="playlist-action-btn" title="删除当前歌单">🗑</button>
                         <button id="playlistBatchBtn" class="playlist-action-btn" title="将勾选歌曲加入当前歌单">⇲</button>
                     </div>
+                    <div class="playlist-io-row">
+                        <button id="playlistExportBtn" class="playlist-io-btn" title="导出歌单（当前为自定义歌单则导出单歌单，全部歌曲则导出全部）">导出</button>
+                        <button id="playlistImportBtn" class="playlist-io-btn" title="从 JSON 文件导入歌单">导入</button>
+                        <input type="file" id="playlistImportFile" accept="application/json,.json" hidden>
+                    </div>
                 </div>
                 <div class="song-count" id="songCount"></div>
                 <div class="song-list" id="songList">

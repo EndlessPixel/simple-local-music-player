@@ -451,6 +451,27 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
     opacity: 0.4;
     cursor: not-allowed;
 }
+.playlist-io-row {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 6px;
+}
+.playlist-io-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--text-muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.playlist-io-btn:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+}
 .song-count {
     padding: 12px 20px;
     font-size: 12px;

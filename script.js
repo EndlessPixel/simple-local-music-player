@@ -1353,6 +1353,85 @@ async function deletePlaylist() {
     showToast('歌单已删除');
 }
 
+// ---------- 歌单 JSON 导入 / 导出 ----------
+const PLAYLIST_EXPORT_VERSION = 1;
+function safeFileName(name) {
+    return name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60) || 'playlist';
+}
+function downloadJson(filename, data) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+// 导出：当前为自定义歌单 -> 单歌单 JSON；全部歌曲 -> 多歌单 JSON
+function exportPlaylists() {
+    if (currentPlaylist === BUILTIN_PLAYLIST) {
+        downloadJson('music-playlists.json', {
+            version: PLAYLIST_EXPORT_VERSION,
+            type: 'multi',
+            playlists: playlists
+        });
+        showToast('已导出全部歌单');
+    } else {
+        downloadJson(`${safeFileName(currentPlaylist)}.json`, {
+            version: PLAYLIST_EXPORT_VERSION,
+            type: 'single',
+            name: currentPlaylist,
+            songs: playlists[currentPlaylist] || []
+        });
+        showToast(`已导出歌单「${currentPlaylist}」`);
+    }
+}
+// 生成一个不与现有歌单重名的名称（重名自动加后缀）
+function uniquePlaylistName(base) {
+    if (!playlists[base]) return base;
+    let i = 1;
+    while (playlists[`${base} (${i})`]) i++;
+    return `${base} (${i})`;
+}
+// 导入：兼容单歌单（{name, songs}）与多歌单（{playlists}）
+function importPlaylists(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+        let data;
+        try {
+            data = JSON.parse(reader.result);
+        } catch (e) {
+            showToast('文件不是有效的 JSON');
+            return;
+        }
+        let imported = 0;
+        if (data && data.type === 'single' && Array.isArray(data.songs)) {
+            const name = uniquePlaylistName(data.name || '导入的歌单');
+            playlists[name] = data.songs.slice();
+            imported = 1;
+        } else if (data && data.playlists && typeof data.playlists === 'object') {
+            for (const key of Object.keys(data.playlists)) {
+                if (key === BUILTIN_PLAYLIST) continue; // 跳过内置项
+                if (!Array.isArray(data.playlists[key])) continue;
+                const name = uniquePlaylistName(key);
+                playlists[name] = data.playlists[key].slice();
+                imported++;
+            }
+        } else {
+            showToast('JSON 结构无法识别（需单歌单或含 playlists 字段）');
+            return;
+        }
+        savePlaylists();
+        renderPlaylistSelect();
+        renderSongList(state.songs, searchInput.value);
+        showToast(`已导入 ${imported} 个歌单`);
+    };
+    reader.onerror = () => showToast('读取文件失败');
+    reader.readAsText(file);
+}
+
 // 初始化歌单（加载数据、绑定事件、渲染选择器和列表）
 function initPlaylists() {
     loadPlaylists();
@@ -1362,6 +1441,18 @@ function initPlaylists() {
     playlistRenameBtn.addEventListener('click', renamePlaylist);
     playlistDeleteBtn.addEventListener('click', deletePlaylist);
     playlistBatchBtn.addEventListener('click', batchAddToPlaylist);
+    const playlistExportBtn = document.getElementById('playlistExportBtn');
+    const playlistImportBtn = document.getElementById('playlistImportBtn');
+    const playlistImportFile = document.getElementById('playlistImportFile');
+    if (playlistExportBtn) playlistExportBtn.addEventListener('click', exportPlaylists);
+    if (playlistImportBtn && playlistImportFile) {
+        playlistImportBtn.addEventListener('click', () => playlistImportFile.click());
+        playlistImportFile.addEventListener('change', (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (file) importPlaylists(file);
+            e.target.value = ''; // 允许重复导入同一文件
+        });
+    }
     // 首次进入：自动剔除各歌单中可能存在的失效引用
     for (const name of Object.keys(playlists)) {
         if (name === BUILTIN_PLAYLIST) continue;
