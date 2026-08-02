@@ -151,9 +151,29 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
 /* ===== 主布局 ===== */
 .app {
     display: grid;
-    grid-template-columns: 320px 1fr;
+    grid-template-columns: var(--sidebar-width, 320px) 1fr;
     grid-template-rows: 1fr auto;
     height: 100vh;
+    position: relative;
+}
+
+/* 侧边栏拖拽手柄（PC 端调整宽度） */
+.sidebar-resizer {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--sidebar-width, 320px);
+    width: 8px;
+    transform: translateX(-50%);
+    cursor: col-resize;
+    z-index: 6;
+    background: transparent;
+    transition: background 0.15s ease;
+}
+.sidebar-resizer:hover,
+.sidebar-resizer.dragging {
+    background: var(--primary);
+    opacity: 0.5;
 }
 
 /* ===== 侧边栏 ===== */
@@ -1432,6 +1452,9 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
     .app {
         grid-template-columns: 1fr;
         grid-template-rows: auto 1fr auto;
+    }
+    .sidebar-resizer {
+        display: none;
     }
     .sidebar {
         position: fixed;

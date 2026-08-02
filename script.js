@@ -2083,6 +2083,7 @@ async function init() {
             state.autoRefreshEnabled = savedAutoRefresh === '1';
         }
         loadSearchHistory();
+        initSidebarResizer();
         ensureSongCountLayout(); // 先建立计数栏结构，避免首屏出现“加载中...”冗余提示
         const res = await fetch('/api/songs');
         state.songs = await res.json();
@@ -2127,4 +2128,45 @@ async function init() {
     }
 }
 
+// ---------- 侧边栏拖拽调整宽度（PC 端）----------
+const SIDEBAR_WIDTH_KEY = 'musicSidebarWidth';
+const SIDEBAR_MIN = 240;
+const SIDEBAR_MAX = 480;
+function initSidebarResizer() {
+    const resizer = document.getElementById('sidebarResizer');
+    if (!resizer) return;
+    // 应用已保存宽度
+    try {
+        const saved = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY), 10);
+        if (saved >= SIDEBAR_MIN && saved <= SIDEBAR_MAX) {
+            document.documentElement.style.setProperty('--sidebar-width', saved + 'px');
+        }
+    } catch (e) { /* 忽略 */ }
+    let dragging = false;
+    resizer.addEventListener('mousedown', (e) => {
+        if (window.innerWidth <= 900) return; // 移动端抽屉模式不启用
+        e.preventDefault();
+        dragging = true;
+        resizer.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const width = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, e.clientX));
+        document.documentElement.style.setProperty('--sidebar-width', width + 'px');
+    });
+    const stopDrag = () => {
+        if (!dragging) return;
+        dragging = false;
+        resizer.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width'), 10);
+        if (current >= SIDEBAR_MIN && current <= SIDEBAR_MAX) {
+            localStorage.setItem(SIDEBAR_WIDTH_KEY, String(current));
+        }
+    };
+    window.addEventListener('mouseup', stopDrag);
+}
 init();
