@@ -414,6 +414,7 @@ audio.addEventListener('play', handleAudioPlay);
 audio.addEventListener('error', handleAudioError);
 
 // ---------- 核心播放函数 ----------
+let playToken = 0; // 切换令牌：确保以最后一次切换请求为准，避免快速点击/异步播放竞态导致重复或跳曲
 function playSong(index, autoPlay = true) {
     if (index < 0 || index >= state.flatSongs.length) {
         showToast('歌曲索引无效');
@@ -459,16 +460,30 @@ function playSong(index, autoPlay = true) {
     loadLyrics(folder, song);
 
     if (autoPlay) {
-        safePlay().then(() => {
-            state.isPlaying = true;
-            updatePlayButton();
-            albumArt.classList.add('playing');
-        }).catch(err => {
-            state.isPlaying = false;
-            updatePlayButton();
-            albumArt.classList.remove('playing');
-            handlePlayError(err, '自动播放');
-        });
+        const token = ++playToken;
+        // 覆盖上一次可能挂起的就绪监听，避免竞态
+        audio.oncanplay = null;
+        const playWhenReady = () => {
+            if (token !== playToken) return; // 已有更新的切换请求，丢弃本次
+            safePlay().then(() => {
+                if (token !== playToken) return;
+                state.isPlaying = true;
+                updatePlayButton();
+                albumArt.classList.add('playing');
+            }).catch(err => {
+                if (token !== playToken) return;
+                state.isPlaying = false;
+                updatePlayButton();
+                albumArt.classList.remove('playing');
+                handlePlayError(err, '自动播放');
+            });
+        };
+        if (audio.readyState >= 3) {
+            // 已具备足够数据，直接尝试播放
+            playWhenReady();
+        } else {
+            audio.oncanplay = playWhenReady;
+        }
     } else {
         state.isPlaying = false;
         updatePlayButton();
