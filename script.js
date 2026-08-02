@@ -342,6 +342,11 @@ function playSong(index, autoPlay = true) {
         showToast('歌曲索引无效');
         return;
     }
+    const target = state.flatSongs[index];
+    if (!target || !target.folder || !target.song) {
+        showToast('该歌曲引用已失效');
+        return;
+    }
 
     state.currentIndex = index;
     const { folder, song } = state.flatSongs[index];
@@ -1139,6 +1144,7 @@ function renderPlaylistSelect() {
 function switchPlaylist(name) {
     if (!playlists[name]) return;
     currentPlaylist = name;
+    selectedSongs.clear(); // 切换歌单时清空勾选态
     savePlaylists();
     renderPlaylistSelect();
     purgeGhostsIfAny(); // 切换时自动剔除已失效引用
@@ -1190,10 +1196,12 @@ function batchAddToPlaylist() {
         return;
     }
     const list = playlists[currentPlaylist] || (playlists[currentPlaylist] = []);
+    const existing = new Set(list); // 用 Set 去重，避免歌单内出现重复引用
     let added = 0;
     for (const key of selectedSongs) {
-        if (!list.includes(key)) {
+        if (!existing.has(key)) {
             list.push(key);
+            existing.add(key);
             added++;
         }
     }
