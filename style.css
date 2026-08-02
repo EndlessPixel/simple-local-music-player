@@ -1350,6 +1350,87 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
     transform: translateX(-50%) translateY(0);
 }
 
+/* ===== 统一模态提示（confirm/prompt，风格与 toast 一致）===== */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 3000;
+    animation: modal-fade 0.18s ease;
+}
+@keyframes modal-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+.modal-box {
+    min-width: 280px;
+    max-width: 90vw;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+    animation: modal-pop 0.18s ease;
+}
+@keyframes modal-pop {
+    from { transform: scale(0.96); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+.modal-message {
+    font-size: 14px;
+    color: var(--text);
+    line-height: 1.5;
+    margin-bottom: 16px;
+    word-break: break-word;
+}
+.modal-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 12px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    outline: none;
+    transition: var(--transition);
+}
+.modal-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+.modal-btn {
+    padding: 8px 18px;
+    font-size: 13px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    transition: var(--transition);
+}
+.modal-btn:hover {
+    background: var(--surface-hover);
+}
+.modal-btn.modal-ok {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+}
+.modal-btn.modal-ok:hover {
+    background: var(--primary-hover);
+}
+
 /* ===== 响应式 ===== */
 @media (max-width: 900px) {
     .app {

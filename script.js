@@ -166,6 +166,84 @@ function showToast(message) {
     }, 3000);
 }
 
+// ---------- 统一模态提示（替代浏览器原生 prompt/confirm，风格与 toast 一致）----------
+// 复用一个 overlay 容器，按需渲染内容；返回 Promise 便于 async/await 调用。
+let _modalOverlay = null;
+function getModalOverlay() {
+    if (!_modalOverlay) {
+        _modalOverlay = document.createElement('div');
+        _modalOverlay.className = 'modal-overlay';
+        _modalOverlay.style.display = 'none';
+        document.body.appendChild(_modalOverlay);
+    }
+    return _modalOverlay;
+}
+function closeModal() {
+    const overlay = getModalOverlay();
+    overlay.style.display = 'none';
+    overlay.innerHTML = '';
+}
+function showConfirm(message) {
+    return new Promise((resolve) => {
+        const overlay = getModalOverlay();
+        overlay.innerHTML = `
+            <div class="modal-box">
+                <div class="modal-message">${escapeHtml(message)}</div>
+                <div class="modal-actions">
+                    <button type="button" class="modal-btn modal-cancel">取消</button>
+                    <button type="button" class="modal-btn modal-ok">确定</button>
+                </div>
+            </div>`;
+        overlay.style.display = 'flex';
+        const ok = overlay.querySelector('.modal-ok');
+        const cancel = overlay.querySelector('.modal-cancel');
+        const done = (val) => {
+            overlay.removeEventListener('click', onOverlay);
+            closeModal();
+            resolve(val);
+        };
+        const onOverlay = (e) => { if (e.target === overlay) done(false); };
+        overlay.addEventListener('click', onOverlay);
+        cancel.addEventListener('click', () => done(false));
+        ok.addEventListener('click', () => done(true));
+    });
+}
+function showPrompt(message, defaultValue = '') {
+    return new Promise((resolve) => {
+        const overlay = getModalOverlay();
+        overlay.innerHTML = `
+            <div class="modal-box">
+                <div class="modal-message">${escapeHtml(message)}</div>
+                <input type="text" class="modal-input" value="${escapeHtml(defaultValue)}" />
+                <div class="modal-actions">
+                    <button type="button" class="modal-btn modal-cancel">取消</button>
+                    <button type="button" class="modal-btn modal-ok">确定</button>
+                </div>
+            </div>`;
+        overlay.style.display = 'flex';
+        const input = overlay.querySelector('.modal-input');
+        const ok = overlay.querySelector('.modal-ok');
+        const cancel = overlay.querySelector('.modal-cancel');
+        input.focus();
+        input.select();
+        const done = (val) => {
+            overlay.removeEventListener('keydown', onKey);
+            overlay.removeEventListener('click', onOverlay);
+            closeModal();
+            resolve(val);
+        };
+        const onOverlay = (e) => { if (e.target === overlay) done(null); };
+        const onKey = (e) => {
+            if (e.key === 'Enter') done(input.value);
+            else if (e.key === 'Escape') done(null);
+        };
+        overlay.addEventListener('click', onOverlay);
+        overlay.addEventListener('keydown', onKey);
+        cancel.addEventListener('click', () => done(null));
+        ok.addEventListener('click', () => done(input.value));
+    });
+}
+
 function formatTime(seconds) {
     if (isNaN(seconds)) return '0:00';
     const mins = Math.floor(seconds / 60);
@@ -954,19 +1032,18 @@ function deleteSearchHistory(term, event) {
         }, 250);
     }
 }
-function clearAllSearchHistory() {
+async function clearAllSearchHistory() {
     if (state.searchHistory.length === 0) return;
-    if (confirm('确定要清空所有搜索历史吗？')) {
-        const items = searchHistoryList.querySelectorAll('.search-history-item');
-        items.forEach((item, i) => {
-            setTimeout(() => { item.classList.add('removing'); }, i * 50);
-        });
-        setTimeout(() => {
-            state.searchHistory = [];
-            saveSearchHistory();
-            renderSearchHistory(searchInput.value);
-        }, 250 + items.length * 50);
-    }
+    if (!(await showConfirm('确定要清空所有搜索历史吗？'))) return;
+    const items = searchHistoryList.querySelectorAll('.search-history-item');
+    items.forEach((item, i) => {
+        setTimeout(() => { item.classList.add('removing'); }, i * 50);
+    });
+    setTimeout(() => {
+        state.searchHistory = [];
+        saveSearchHistory();
+        renderSearchHistory(searchInput.value);
+    }, 250 + items.length * 50);
 }
 function showSearchHistory() {
     renderSearchHistory(searchInput.value);
@@ -1212,8 +1289,8 @@ function batchAddToPlaylist() {
 }
 
 // 新建歌单（重名校验）
-function createPlaylist() {
-    const name = prompt('请输入新歌单名称：');
+async function createPlaylist() {
+    const name = await showPrompt('请输入新歌单名称：');
     if (name === null) return;
     const trimmed = name.trim();
     if (!trimmed) {
@@ -1233,12 +1310,12 @@ function createPlaylist() {
 }
 
 // 重命名歌单（重名拦截，内置项不可改名）
-function renamePlaylist() {
+async function renamePlaylist() {
     if (currentPlaylist === BUILTIN_PLAYLIST) {
         showToast('“全部歌曲”不可重命名');
         return;
     }
-    const name = prompt('请输入新的歌单名称：', currentPlaylist);
+    const name = await showPrompt('请输入新的歌单名称：', currentPlaylist);
     if (name === null) return;
     const trimmed = name.trim();
     if (!trimmed) {
@@ -1261,12 +1338,12 @@ function renamePlaylist() {
 }
 
 // 删除歌单（二次确认，内置项不可删）
-function deletePlaylist() {
+async function deletePlaylist() {
     if (currentPlaylist === BUILTIN_PLAYLIST) {
         showToast('“全部歌曲”不可删除');
         return;
     }
-    if (!confirm(`确定要删除歌单“${currentPlaylist}”吗？该操作不可恢复。`)) return;
+    if (!(await showConfirm(`确定要删除歌单“${currentPlaylist}”吗？该操作不可恢复。`))) return;
     delete playlists[currentPlaylist];
     currentPlaylist = BUILTIN_PLAYLIST;
     savePlaylists();
@@ -1481,9 +1558,9 @@ function createGhostItem(ghostKey, num) {
     info.appendChild(folderName);
     item.appendChild(numEl);
     item.appendChild(info);
-    item.addEventListener('click', (e) => {
+    item.addEventListener('click', async (e) => {
         e.stopPropagation(); // 避免触发 songList 的播放委托
-        if (confirm(`歌曲「${ghostKey}」已失效，是否从歌单“${currentPlaylist}”中移除？`)) {
+        if (await showConfirm(`歌曲「${ghostKey}」已失效，是否从歌单“${currentPlaylist}”中移除？`)) {
             removeGhostFromPlaylist(ghostKey);
         }
     });
