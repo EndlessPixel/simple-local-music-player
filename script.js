@@ -582,14 +582,18 @@ function scrollToFolder(folder) {
         const songsContainer = targetGroup.querySelector('.folder-songs');
         if (songsContainer) songsContainer.classList.remove('collapsed');
     }
-    const containerRect = songList.getBoundingClientRect();
-    const groupRect = targetGroup.getBoundingClientRect();
-    if (groupRect.top < containerRect.top || groupRect.top > containerRect.top + 100) {
-        songList.scrollTo({
-            top: targetGroup.offsetTop - 10,
-            behavior: 'smooth'
-        });
-    }
+    // 以当前播放歌曲项（.song-item.active）为中心滚动，而非滚动到文件夹顶部
+    const activeItem = songList.querySelector('.song-item.active');
+    if (!activeItem) return;
+    const itemTop = activeItem.offsetTop;
+    const itemHeight = activeItem.offsetHeight;
+    const containerHeight = songList.clientHeight;
+    // 目标：歌曲项垂直居中于列表可视区
+    const targetTop = itemTop - (containerHeight - itemHeight) / 2;
+    songList.scrollTo({
+        top: Math.max(0, targetTop),
+        behavior: 'smooth'
+    });
 }
 
 // ---------- 封面 & 元数据 ----------
