@@ -51,7 +51,6 @@ body {
 [data-theme="dark"] .toast-notification { background: #333338; }
 [data-theme="dark"] .changelog-pagination button { background: #333338; border-color: #444; }
 [data-theme="dark"] .changelog-pagination button:hover { background: #3e3e44; }
-[data-theme="dark"] .endpoint-bg { background: #1e1e22; }
 [data-theme="dark"] .changelog-item { background: #1e1e22; }
 [data-theme="dark"] .volume-wrapper,
 [data-theme="dark"] .search-input,
