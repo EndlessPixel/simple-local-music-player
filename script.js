@@ -2086,6 +2086,7 @@ async function init() {
             state.autoRefreshEnabled = savedAutoRefresh === '1';
         }
         loadSearchHistory();
+        ensureSongCountLayout(); // 先建立计数栏结构，避免首屏出现“加载中...”冗余提示
         const res = await fetch('/api/songs');
         state.songs = await res.json();
         initPlaylists(); // 加载歌单数据、绑定事件、按当前歌单渲染列表
