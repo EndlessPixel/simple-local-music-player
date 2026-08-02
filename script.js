@@ -45,6 +45,7 @@ const AUTO_REFRESH_INTERVAL = 60;
 const state = {
     songs: {},
     flatSongs: [],
+    flatAllSongs: [],
     currentIndex: -1,
     isPlaying: false,
     isShuffle: false,
@@ -53,8 +54,6 @@ const state = {
     refreshCountdown: AUTO_REFRESH_INTERVAL,
     refreshInterval: null,
     autoRefreshEnabled: true,
-    pendingAutoPlay: false,
-    pendingListener: null,
     searchHistory: [],
     lastSearchTerm: '',
     searchMode: 'normal'   // 'normal' | 'regex'
@@ -112,10 +111,10 @@ function getSongKey(folder, song) {
 // 由主列表构建合法标识集合，用于幽灵数据检测
 function getValidKeySet() {
     const set = new Set();
-    if (songFolders && songFolders.folders) {
-        for (const folder of songFolders.folders) {
-            for (const song of folder.songs) {
-                set.add(getSongKey(folder.folder, song));
+    if (state.songs) {
+        for (const folder of Object.keys(state.songs)) {
+            for (const song of state.songs[folder]) {
+                set.add(getSongKey(folder, song));
             }
         }
     }
