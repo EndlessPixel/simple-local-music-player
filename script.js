@@ -585,11 +585,13 @@ function scrollToFolder(folder) {
     // 以当前播放歌曲项（.song-item.active）为中心滚动，而非滚动到文件夹顶部
     const activeItem = songList.querySelector('.song-item.active');
     if (!activeItem) return;
-    const itemTop = activeItem.offsetTop;
     const itemHeight = activeItem.offsetHeight;
     const containerHeight = songList.clientHeight;
-    // 目标：歌曲项垂直居中于列表可视区
-    const targetTop = itemTop - (containerHeight - itemHeight) / 2;
+    // 用视口坐标差计算，避免 offsetParent 与滚动容器坐标系不一致导致的乱跳
+    const itemRect = activeItem.getBoundingClientRect();
+    const containerRect = songList.getBoundingClientRect();
+    const delta = itemRect.top - containerRect.top;
+    const targetTop = songList.scrollTop + delta - (containerHeight - itemHeight) / 2;
     songList.scrollTo({
         top: Math.max(0, targetTop),
         behavior: 'smooth'
