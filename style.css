@@ -379,6 +379,59 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
     display: flex;
     flex-direction: column;
 }
+
+/* ===== 歌单栏 ===== */
+.playlist-bar {
+    padding: 10px 12px 4px;
+    border-bottom: 1px solid var(--border);
+}
+.playlist-selector-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.playlist-select {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.playlist-select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+.playlist-action-btn {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: var(--text-muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.playlist-action-btn:hover:not(:disabled) {
+    background: var(--surface-hover);
+    color: var(--text);
+}
+.playlist-action-btn.disabled,
+.playlist-action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
 .song-count {
     padding: 12px 20px;
     font-size: 12px;
@@ -491,6 +544,52 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
 }
 .song-item.active .song-num {
     color: var(--primary);
+}
+.song-num-placeholder {
+    width: 16px;
+    flex: 0 0 auto;
+}
+.song-checkbox {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+.song-remove-btn {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    font-size: 16px;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    opacity: 0;
+    transition: var(--transition);
+}
+.song-item:hover .song-remove-btn {
+    opacity: 1;
+}
+.song-remove-btn:hover {
+    background: var(--surface-hover);
+    color: #ff453a;
+}
+.song-item.song-ghost {
+    background: rgba(255, 69, 58, 0.08);
+    cursor: pointer;
+}
+.song-item.song-ghost .song-title-text {
+    color: #ff453a;
+    text-decoration: line-through;
+}
+.song-item.song-ghost .song-folder {
+    color: #ff453a;
 }
 .song-info {
     flex: 1;

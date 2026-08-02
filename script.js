@@ -95,6 +95,61 @@ const lyricsLines = document.getElementById('lyricsLines');
 let lyricsData = [];       // [{time: seconds, text: string}, ...]
 let lyricsActiveIndex = -1;
 
+// ===== 歌单（引用型）=====
+// playlists = { "全部歌曲": [], "我喜欢的": ["folder|song", ...] }
+// "全部歌曲" 为内置保留项，不可删改；其余歌单仅存储对主列表歌曲的引用标识。
+const PLAYLISTS_KEY = 'musicPlaylists';
+const CURRENT_PLAYLIST_KEY = 'musicCurrentPlaylist';
+const BUILTIN_PLAYLIST = '全部歌曲';
+let playlists = {};                 // 歌单数据
+let currentPlaylist = BUILTIN_PLAYLIST; // 当前选中歌单
+let selectedSongs = new Set();      // 勾选的歌曲引用标识（folder|song）
+
+// 主列表唯一标识：folder|song（与 renderSongList 中一致）
+function getSongKey(folder, song) {
+    return `${folder}|${song}`;
+}
+// 由主列表构建合法标识集合，用于幽灵数据检测
+function getValidKeySet() {
+    const set = new Set();
+    if (songFolders && songFolders.folders) {
+        for (const folder of songFolders.folders) {
+            for (const song of folder.songs) {
+                set.add(getSongKey(folder.folder, song));
+            }
+        }
+    }
+    return set;
+}
+function loadPlaylists() {
+    try {
+        const raw = localStorage.getItem(PLAYLISTS_KEY);
+        playlists = raw ? JSON.parse(raw) : {};
+    } catch (e) {
+        playlists = {};
+    }
+    if (!playlists || typeof playlists !== 'object' || Array.isArray(playlists)) {
+        playlists = {};
+    }
+    if (!playlists[BUILTIN_PLAYLIST] || !Array.isArray(playlists[BUILTIN_PLAYLIST])) {
+        playlists[BUILTIN_PLAYLIST] = [];
+    }
+    const cur = localStorage.getItem(CURRENT_PLAYLIST_KEY);
+    if (!cur || !playlists[cur]) {
+        currentPlaylist = BUILTIN_PLAYLIST;
+    } else {
+        currentPlaylist = cur;
+    }
+}
+function savePlaylists() {
+    try {
+        localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(playlists));
+        localStorage.setItem(CURRENT_PLAYLIST_KEY, currentPlaylist);
+    } catch (e) {
+        console.error('保存歌单失败', e);
+    }
+}
+
 // ---------- 工具函数 ----------
 function showToast(message) {
     let toast = document.querySelector('.toast-notification');
@@ -1048,6 +1103,190 @@ document.addEventListener('click', (e) => {
     if (e.target.closest('#autoRefreshToggleBtn')) toggleAutoRefresh();
 });
 
+// ============ 歌单功能 ============
+const playlistSelect = document.getElementById('playlistSelect');
+const playlistNewBtn = document.getElementById('playlistNewBtn');
+const playlistRenameBtn = document.getElementById('playlistRenameBtn');
+const playlistDeleteBtn = document.getElementById('playlistDeleteBtn');
+const playlistBatchBtn = document.getElementById('playlistBatchBtn');
+
+// 渲染下拉选择器（全部歌曲始终位于首位且不可删改）
+function renderPlaylistSelect() {
+    const names = Object.keys(playlists);
+    names.sort((a, b) => {
+        if (a === BUILTIN_PLAYLIST) return -1;
+        if (b === BUILTIN_PLAYLIST) return 1;
+        return a.localeCompare(b);
+    });
+    playlistSelect.innerHTML = '';
+    for (const name of names) {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = (name === BUILTIN_PLAYLIST ? '全部歌曲' : name);
+        playlistSelect.appendChild(opt);
+    }
+    playlistSelect.value = currentPlaylist;
+    // “全部歌曲” 不可改名/删除
+    const isBuiltin = (currentPlaylist === BUILTIN_PLAYLIST);
+    playlistRenameBtn.disabled = isBuiltin;
+    playlistDeleteBtn.disabled = isBuiltin;
+    playlistRenameBtn.classList.toggle('disabled', isBuiltin);
+    playlistDeleteBtn.classList.toggle('disabled', isBuiltin);
+    playlistBatchBtn.style.display = isBuiltin ? 'none' : '';
+}
+
+// 切换歌单：切换后自动比对主列表，剔除失效幽灵（无需用户点击）
+function switchPlaylist(name) {
+    if (!playlists[name]) return;
+    currentPlaylist = name;
+    savePlaylists();
+    renderPlaylistSelect();
+    purgeGhostsIfAny(); // 切换时自动剔除已失效引用
+    renderSongList(state.songs, searchInput.value);
+}
+
+// 从歌单移除指定引用（单行“移出”）
+function removeFromPlaylist(key) {
+    const list = playlists[currentPlaylist];
+    if (!list) return;
+    const idx = list.indexOf(key);
+    if (idx >= 0) list.splice(idx, 1);
+    selectedSongs.delete(key);
+    savePlaylists();
+    renderSongList(state.songs, searchInput.value);
+}
+
+// 移除幽灵引用并重渲染
+function removeGhostFromPlaylist(key) {
+    const list = playlists[currentPlaylist];
+    if (!list) return;
+    const idx = list.indexOf(key);
+    if (idx >= 0) list.splice(idx, 1);
+    savePlaylists();
+    renderSongList(state.songs, searchInput.value);
+}
+
+// 切换/初始化时自动比对主列表，剔除失效幽灵引用
+function purgeGhostsIfAny() {
+    if (currentPlaylist === BUILTIN_PLAYLIST) return;
+    const list = playlists[currentPlaylist];
+    if (!list || !list.length) return;
+    const validKeys = getValidKeySet();
+    const before = list.length;
+    playlists[currentPlaylist] = list.filter(key => validKeys.has(key));
+    if (playlists[currentPlaylist].length !== before) {
+        savePlaylists();
+    }
+}
+
+// 将勾选歌曲加入当前歌单（批量）
+function batchAddToPlaylist() {
+    if (currentPlaylist === BUILTIN_PLAYLIST) {
+        showToast('请先选择一个自定义歌单');
+        return;
+    }
+    if (selectedSongs.size === 0) {
+        showToast('请先在歌曲行左侧勾选要加入的歌曲');
+        return;
+    }
+    const list = playlists[currentPlaylist] || (playlists[currentPlaylist] = []);
+    let added = 0;
+    for (const key of selectedSongs) {
+        if (!list.includes(key)) {
+            list.push(key);
+            added++;
+        }
+    }
+    savePlaylists();
+    selectedSongs.clear();
+    renderSongList(state.songs, searchInput.value);
+    showToast(added > 0 ? `已加入 ${added} 首到「${currentPlaylist}」` : '所选歌曲已在歌单中');
+}
+
+// 新建歌单（重名校验）
+function createPlaylist() {
+    const name = prompt('请输入新歌单名称：');
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (!trimmed) {
+        showToast('歌单名称不能为空');
+        return;
+    }
+    if (playlists[trimmed]) {
+        showToast('已存在同名歌单，请换一个名称');
+        return;
+    }
+    playlists[trimmed] = [];
+    currentPlaylist = trimmed;
+    savePlaylists();
+    renderPlaylistSelect();
+    renderSongList(state.songs, searchInput.value);
+    showToast(`已创建歌单「${trimmed}」`);
+}
+
+// 重命名歌单（重名拦截，内置项不可改名）
+function renamePlaylist() {
+    if (currentPlaylist === BUILTIN_PLAYLIST) {
+        showToast('“全部歌曲”不可重命名');
+        return;
+    }
+    const name = prompt('请输入新的歌单名称：', currentPlaylist);
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (!trimmed) {
+        showToast('歌单名称不能为空');
+        return;
+    }
+    if (trimmed === currentPlaylist) return;
+    if (playlists[trimmed]) {
+        showToast('已存在同名歌单，请换一个名称');
+        return;
+    }
+    const refs = playlists[currentPlaylist];
+    delete playlists[currentPlaylist];
+    playlists[trimmed] = refs;
+    currentPlaylist = trimmed;
+    savePlaylists();
+    renderPlaylistSelect();
+    renderSongList(state.songs, searchInput.value);
+    showToast(`已重命名为「${trimmed}」`);
+}
+
+// 删除歌单（二次确认，内置项不可删）
+function deletePlaylist() {
+    if (currentPlaylist === BUILTIN_PLAYLIST) {
+        showToast('“全部歌曲”不可删除');
+        return;
+    }
+    if (!confirm(`确定要删除歌单“${currentPlaylist}”吗？该操作不可恢复。`)) return;
+    delete playlists[currentPlaylist];
+    currentPlaylist = BUILTIN_PLAYLIST;
+    savePlaylists();
+    renderPlaylistSelect();
+    renderSongList(state.songs, searchInput.value);
+    showToast('歌单已删除');
+}
+
+// 初始化歌单（加载数据、绑定事件、渲染选择器和列表）
+function initPlaylists() {
+    loadPlaylists();
+    renderPlaylistSelect();
+    playlistSelect.addEventListener('change', () => switchPlaylist(playlistSelect.value));
+    playlistNewBtn.addEventListener('click', createPlaylist);
+    playlistRenameBtn.addEventListener('click', renamePlaylist);
+    playlistDeleteBtn.addEventListener('click', deletePlaylist);
+    playlistBatchBtn.addEventListener('click', batchAddToPlaylist);
+    // 首次进入：自动剔除各歌单中可能存在的失效引用
+    for (const name of Object.keys(playlists)) {
+        if (name === BUILTIN_PLAYLIST) continue;
+        const list = playlists[name];
+        const validKeys = getValidKeySet();
+        const before = list.length;
+        playlists[name] = list.filter(key => validKeys.has(key));
+        if (playlists[name].length !== before) savePlaylists();
+    }
+}
+
 // ---------- 渲染歌曲列表 ----------
 function renderSongList(songs, filter = '') {
     const currentScroll = songList.scrollTop;
@@ -1059,14 +1298,33 @@ function renderSongList(songs, filter = '') {
     songList.innerHTML = '';
     state.flatSongs = [];
     const isFullList = (filter === '');
+    const isAllPlaylist = (currentPlaylist === BUILTIN_PLAYLIST);
+    const showItemControls = !isAllPlaylist; // 仅自定义歌单显示勾选/移出
     let totalSongs = 0;
+
+    // 当前歌单引用的合法标识集合（用于过滤与幽灵检测）
+    const playlistRefs = isAllPlaylist ? null : (playlists[currentPlaylist] || []);
+    const validKeys = getValidKeySet();
+    // 自定义歌单内的幽灵标识（主列表已不存在）
+    const ghostKeys = [];
+    if (!isAllPlaylist && playlistRefs) {
+        for (const key of playlistRefs) {
+            if (!validKeys.has(key)) ghostKeys.push(key);
+        }
+    }
+
     const folders = Object.keys(songs).sort((a, b) => {
         if (a === '.') return -1;
         if (b === '.') return 1;
         return a.localeCompare(b);
     });
     for (const folder of folders) {
-        const songsInFolder = songs[folder].filter(name => matchesFilter(name, filter));
+        let songsInFolder = songs[folder].filter(name => matchesFilter(name, filter));
+        // 自定义歌单：只保留被引用的歌曲
+        if (!isAllPlaylist && playlistRefs) {
+            const refSet = new Set(playlistRefs);
+            songsInFolder = songsInFolder.filter(name => refSet.has(getSongKey(folder, name)));
+        }
         if (songsInFolder.length === 0) continue;
         const isCollapsed = state.collapsedFolders.has(folder);
         const group = document.createElement('div');
@@ -1085,34 +1343,7 @@ function renderSongList(songs, filter = '') {
         songsContainer.className = 'folder-songs' + (isCollapsed ? ' collapsed' : '');
         const sortedSongs = [...songsInFolder].sort();
         for (const song of sortedSongs) {
-            const item = document.createElement('div');
-            item.className = 'song-item';
-            item.dataset.index = state.flatSongs.length;
-            item.dataset.folder = folder;
-            item.dataset.song = song;
-            const num = document.createElement('span');
-            num.className = 'song-num';
-            num.textContent = String(totalSongs + 1).padStart(2, '0');
-            const playIcon = document.createElement('span');
-            playIcon.className = 'song-play';
-            playIcon.innerHTML = '<ion-icon name="play" size="small"></ion-icon>';
-            const info = document.createElement('div');
-            info.className = 'song-info';
-            const title = document.createElement('div');
-            title.className = 'song-title-text';
-            if (filter && filter.trim()) {
-                title.innerHTML = highlightMatches(song.replace(/\.[^.]+$/, ''), filter);
-            } else {
-                title.textContent = song.replace(/\.[^.]+$/, '');
-            }
-            const folderName = document.createElement('div');
-            folderName.className = 'song-folder';
-            folderName.textContent = folder === '.' ? '根目录' : folder;
-            info.appendChild(title);
-            info.appendChild(folderName);
-            item.appendChild(num);
-            item.appendChild(playIcon);
-            item.appendChild(info);
+            const item = createSongItem(folder, song, totalSongs + 1, filter, showItemControls);
             songsContainer.appendChild(item);
             state.flatSongs.push({ folder, song });
             totalSongs++;
@@ -1120,6 +1351,21 @@ function renderSongList(songs, filter = '') {
         group.appendChild(songsContainer);
         songList.appendChild(group);
     }
+
+    // 渲染幽灵引用行（标红），点击弹窗提示并剔除
+    for (const ghostKey of ghostKeys) {
+        const item = createGhostItem(ghostKey, totalSongs + 1);
+        const ghostGroup = document.createElement('div');
+        ghostGroup.className = 'folder-group';
+        const songsContainer = document.createElement('div');
+        songsContainer.className = 'folder-songs';
+        songsContainer.appendChild(item);
+        ghostGroup.appendChild(songsContainer);
+        songList.appendChild(ghostGroup);
+        state.flatSongs.push({ folder: '', song: '', ghost: true, key: ghostKey });
+        totalSongs++;
+    }
+
     if (isFullList) {
         state.flatAllSongs = [...state.flatSongs];
     }
@@ -1132,12 +1378,108 @@ function renderSongList(songs, filter = '') {
         songList.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-icon"><ion-icon name="musical-notes" size="large"></ion-icon></div>
-                        <div class="empty-text">${filter ? '没有找到匹配的歌曲' : '将音乐文件放入 music 文件夹'}</div>
+                        <div class="empty-text">${
+                            filter ? '没有找到匹配的歌曲'
+                            : isAllPlaylist ? '将音乐文件放入 music 文件夹'
+                            : '当前歌单还没有歌曲，勾选歌曲后点击 ⇲ 加入'
+                        }</div>
                     </div>
                 `;
     }
     songList.scrollTop = currentScroll;
     updateActiveItem(currentSong);
+}
+
+// 创建普通歌曲行（含可选勾选框与移出按钮）
+function createSongItem(folder, song, num, filter, showItemControls) {
+    const item = document.createElement('div');
+    item.className = 'song-item';
+    item.dataset.index = state.flatSongs.length;
+    item.dataset.folder = folder;
+    item.dataset.song = song;
+    if (showItemControls) {
+        const key = getSongKey(folder, song);
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'song-checkbox';
+        checkbox.dataset.key = key;
+        checkbox.checked = selectedSongs.has(key);
+        checkbox.addEventListener('click', (e) => e.stopPropagation());
+        checkbox.addEventListener('change', () => {
+            if (checkbox.checked) selectedSongs.add(key);
+            else selectedSongs.delete(key);
+        });
+        item.appendChild(checkbox);
+    } else {
+        const numSpan = document.createElement('span');
+        numSpan.className = 'song-num-placeholder';
+        item.appendChild(numSpan);
+    }
+    const numEl = document.createElement('span');
+    numEl.className = 'song-num';
+    numEl.textContent = String(num).padStart(2, '0');
+    const playIcon = document.createElement('span');
+    playIcon.className = 'song-play';
+    playIcon.innerHTML = '<ion-icon name="play" size="small"></ion-icon>';
+    const info = document.createElement('div');
+    info.className = 'song-info';
+    const title = document.createElement('div');
+    title.className = 'song-title-text';
+    if (filter && filter.trim()) {
+        title.innerHTML = highlightMatches(song.replace(/\.[^.]+$/, ''), filter);
+    } else {
+        title.textContent = song.replace(/\.[^.]+$/, '');
+    }
+    const folderName = document.createElement('div');
+    folderName.className = 'song-folder';
+    folderName.textContent = folder === '.' ? '根目录' : folder;
+    info.appendChild(title);
+    info.appendChild(folderName);
+    item.appendChild(numEl);
+    item.appendChild(playIcon);
+    item.appendChild(info);
+    if (showItemControls) {
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'song-remove-btn';
+        removeBtn.type = 'button';
+        removeBtn.title = '移出当前歌单';
+        removeBtn.innerHTML = '<ion-icon name="close-circle" size="small"></ion-icon>';
+        removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeFromPlaylist(getSongKey(folder, song));
+        });
+        item.appendChild(removeBtn);
+    }
+    return item;
+}
+
+// 创建幽灵引用行（歌曲已失效，标红提示）
+function createGhostItem(ghostKey, num) {
+    const item = document.createElement('div');
+    item.className = 'song-item song-ghost';
+    item.dataset.ghostKey = ghostKey;
+    const numEl = document.createElement('span');
+    numEl.className = 'song-num';
+    numEl.textContent = String(num).padStart(2, '0');
+    const info = document.createElement('div');
+    info.className = 'song-info';
+    const title = document.createElement('div');
+    title.className = 'song-title-text';
+    title.textContent = ghostKey.replace(/\|/g, ' / ');
+    const folderName = document.createElement('div');
+    folderName.className = 'song-folder';
+    folderName.textContent = '歌曲已失效（文件不存在）';
+    info.appendChild(title);
+    info.appendChild(folderName);
+    item.appendChild(numEl);
+    item.appendChild(info);
+    item.addEventListener('click', (e) => {
+        e.stopPropagation(); // 避免触发 songList 的播放委托
+        if (confirm(`歌曲「${ghostKey}」已失效，是否从歌单“${currentPlaylist}”中移除？`)) {
+            removeGhostFromPlaylist(ghostKey);
+        }
+    });
+    return item;
 }
 
 // ---------- 自动播放尝试（页面加载时） ----------
@@ -1652,7 +1994,7 @@ async function init() {
         loadSearchHistory();
         const res = await fetch('/api/songs');
         state.songs = await res.json();
-        renderSongList(state.songs);
+        initPlaylists(); // 加载歌单数据、绑定事件、按当前歌单渲染列表
         applyShareLinkFromQuery();
         updateAutoRefreshUi();
         if (state.autoRefreshEnabled) startAutoRefresh();
