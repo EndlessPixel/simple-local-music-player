@@ -1372,6 +1372,18 @@ function initPlaylists() {
 }
 
 // ---------- 渲染歌曲列表 ----------
+
+// 确保 songCount 内部结构只创建一次，避免每次 renderSongList 重建自动刷新按钮导致闪烁
+function ensureSongCountLayout() {
+    if (songCount.querySelector('#songCountNum')) return;
+    songCount.innerHTML = `
+                <span id="songCountNum"></span>
+                <span class="auto-refresh" id="autoRefresh">自动刷新: ${state.refreshCountdown}s</span>
+                <button type="button" class="auto-refresh-toggle" id="autoRefreshToggleBtn" aria-pressed="false" title="开启自动刷新">自动刷新</button>
+            `;
+    updateAutoRefreshUi();
+}
+
 function renderSongList(songs, filter = '') {
     const currentScroll = songList.scrollTop;
     let currentSong = null;
@@ -1453,11 +1465,9 @@ function renderSongList(songs, filter = '') {
     if (isFullList) {
         state.flatAllSongs = [...state.flatSongs];
     }
-    songCount.innerHTML = `
-                <span>共 ${totalSongs} 首歌曲</span>
-                <span class="auto-refresh" id="autoRefresh">自动刷新: ${state.refreshCountdown}s</span>
-                <button type="button" class="auto-refresh-toggle" id="autoRefreshToggleBtn" aria-pressed="false" title="开启自动刷新">自动刷新</button>
-            `;
+    ensureSongCountLayout();
+    const countNum = document.getElementById('songCountNum');
+    if (countNum) countNum.textContent = `共 ${totalSongs} 首歌曲`;
     if (totalSongs === 0) {
         songList.innerHTML = `
                     <div class="empty-state">
