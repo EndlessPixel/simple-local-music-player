@@ -1219,7 +1219,6 @@ function renderPlaylistSelect() {
 function switchPlaylist(name) {
     if (!playlists[name]) return;
     currentPlaylist = name;
-    selectedSongs.clear(); // 切换歌单时清空勾选态
     savePlaylists();
     renderPlaylistSelect();
     purgeGhostsIfAny(); // 切换时自动剔除已失效引用
@@ -1263,7 +1262,7 @@ function purgeGhostsIfAny() {
 // 将勾选歌曲加入当前歌单（批量）
 function batchAddToPlaylist() {
     if (currentPlaylist === BUILTIN_PLAYLIST) {
-        showToast('请先选择一个自定义歌单');
+        showToast('请先在歌曲行左侧勾选歌曲，再切换到目标歌单后点此按钮');
         return;
     }
     if (selectedSongs.size === 0) {
@@ -1491,20 +1490,18 @@ function createSongItem(folder, song, num, filter, showItemControls) {
     item.dataset.index = state.flatSongs.length;
     item.dataset.folder = folder;
     item.dataset.song = song;
-    if (showItemControls) {
-        const key = getSongKey(folder, song);
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.className = 'song-checkbox';
-        checkbox.dataset.key = key;
-        checkbox.checked = selectedSongs.has(key);
-        checkbox.addEventListener('click', (e) => e.stopPropagation());
-        checkbox.addEventListener('change', () => {
-            if (checkbox.checked) selectedSongs.add(key);
-            else selectedSongs.delete(key);
-        });
-        item.appendChild(checkbox);
-    }
+    const key = getSongKey(folder, song);
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'song-checkbox';
+    checkbox.dataset.key = key;
+    checkbox.checked = selectedSongs.has(key);
+    checkbox.addEventListener('click', (e) => e.stopPropagation());
+    checkbox.addEventListener('change', () => {
+        if (checkbox.checked) selectedSongs.add(key);
+        else selectedSongs.delete(key);
+    });
+    item.appendChild(checkbox);
     const numEl = document.createElement('span');
     numEl.className = 'song-num';
     numEl.textContent = String(num).padStart(2, '0');
