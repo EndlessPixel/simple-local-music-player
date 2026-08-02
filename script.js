@@ -1369,6 +1369,7 @@ function initPlaylists() {
         playlists[name] = list.filter(key => validKeys.has(key));
         if (playlists[name].length !== before) savePlaylists();
     }
+    renderSongList(state.songs, searchInput.value); // 按当前歌单渲染主列表
 }
 
 // ---------- 渲染歌曲列表 ----------
