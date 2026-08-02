@@ -1213,7 +1213,6 @@ function renderPlaylistSelect() {
     playlistDeleteBtn.disabled = isBuiltin;
     playlistRenameBtn.classList.toggle('disabled', isBuiltin);
     playlistDeleteBtn.classList.toggle('disabled', isBuiltin);
-    playlistBatchBtn.style.display = isBuiltin ? 'none' : '';
 }
 
 // 切换歌单：切换后自动比对主列表，剔除失效幽灵（无需用户点击）
@@ -1505,10 +1504,6 @@ function createSongItem(folder, song, num, filter, showItemControls) {
             else selectedSongs.delete(key);
         });
         item.appendChild(checkbox);
-    } else {
-        const numSpan = document.createElement('span');
-        numSpan.className = 'song-num-placeholder';
-        item.appendChild(numSpan);
     }
     const numEl = document.createElement('span');
     numEl.className = 'song-num';
