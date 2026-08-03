@@ -163,8 +163,8 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
     top: 0;
     bottom: 0;
     left: var(--sidebar-width, 320px);
-    width: 8px;
-    transform: translateX(-50%);
+    width: 6px;
+    margin-left: -3px;
     cursor: col-resize;
     z-index: 6;
     background: transparent;
@@ -172,6 +172,8 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
 }
 .sidebar-resizer:hover,
 .sidebar-resizer.dragging {
+    width: 10px;
+    margin-left: -5px;
     background: var(--primary);
     opacity: 0.5;
 }
