@@ -305,10 +305,10 @@ export function createSongStore({ musicDir, dbFile, coverDir, exts }) {
             return map;
         },
 
-        // /api/meta —— 库读（字段较旧版略丰富，前端仅取 artist/title/duration）
+        // /api/meta —— 库读（含内容 SHA-256，供下载校验 / sha 分享链接使用）
         async getMeta(rel) {
             const fresh = await ensureFresh(rel);
-            if (!fresh) return { artist: null, title: null, duration: null, codec: null, container: null, sample_rate: null, bitrate: null };
+            if (!fresh) return { artist: null, title: null, duration: null, codec: null, container: null, sample_rate: null, bitrate: null, filename: null, sha256: null };
             const row = fresh.row;
             return {
                 artist: row.artist ?? null,
@@ -317,8 +317,20 @@ export function createSongStore({ musicDir, dbFile, coverDir, exts }) {
                 codec: row.codec ?? null,
                 container: row.container ?? null,
                 sample_rate: row.sample_rate ?? null,
-                bitrate: row.bitrate ?? null
+                bitrate: row.bitrate ?? null,
+                filename: row.filename,
+                sha256: row.sha256 ?? null
             };
+        },
+
+        // 按内容 SHA-256 反查歌曲（sha 分享链接打开时用于定位歌曲；
+        // 相同内容的多份文件取排序后的第一份）
+        lookupBySha(sha) {
+            if (!sha || typeof sha !== 'string') return null;
+            const row = db.prepare(
+                'SELECT relpath, folder, filename, sha256, artist, title, duration FROM songs WHERE sha256 = ? ORDER BY folder, filename LIMIT 1'
+            ).get(sha);
+            return row || null;
         },
 
         // /api/lyrics —— 纯库读；外部 LRC 来源校验一次 mtime，变化则重读回写
