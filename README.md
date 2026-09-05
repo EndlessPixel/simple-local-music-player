@@ -74,6 +74,28 @@ music/
 
 > 首次启动会自动把 `music/` 扫描入库到 `data/library.db`；之后再重启只会做**增量同步**（见下文「性能与架构」）。
 
+### （可选）用 Docker 运行
+
+无需本机安装 Node.js。镜像基于 `node:24-alpine`，内置 SQLite 元数据库，零额外配置：
+
+```bash
+# 构建镜像
+docker build -t simple-local-music-player .
+
+# 运行：把宿主音乐目录挂载进容器（:ro 只读挂载，杜绝容器误写）
+docker run -d --name slmp \
+  -p 18250:18250 \
+  -v /你的/音乐目录:/app/music:ro \
+  -v slmp-data:/app/data \
+  simple-local-music-player
+```
+
+- `/app/music`：音乐目录挂载点，建议 `:ro` 只读挂载；
+- `/app/data`：元数据库与封面缓存目录，用命名卷 `slmp-data` 持久化（不挂载则每次重建容器会重新扫描一遍）；
+- 容器内以非 root 的 `node` 用户运行，访问 http://localhost:18250 即可使用。
+
+> 若挂载的是本机目录（bind mount）且播放器无法读取，通常是宿主目录权限不足：确保该目录对容器用户（uid 1000）开放读/执行权限。
+
 ---
 
 ## 特性一览
@@ -233,6 +255,8 @@ data/library.db  SQLite：每首歌的元数据 + mtime + size + sha256 + 歌词
 ├── eslint.config.js   # ESLint 配置
 ├── start.sh           # Linux / macOS 启动脚本
 ├── start.bat          # Windows 启动脚本
+├── Dockerfile         # Docker 镜像构建（可选使用）
+├── .dockerignore      # Docker 构建上下文排除项
 ├── music/             # 你的音乐目录（需自行创建）
 ├── data/              # 运行时生成：library.db 元数据库 + covers/ 封面缓存（勿提交）
 ├── old/               # 历史版本（已废弃）
