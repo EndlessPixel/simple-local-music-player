@@ -259,19 +259,21 @@ function escapeHtml(text) {
 function highlightMatches(text, query) {
     if (!query || !query.trim()) return escapeHtml(text);
     const safeText = escapeHtml(text);
-    let regex;
     if (state.searchMode === 'regex') {
         try {
-            regex = new RegExp(`(${query})`, 'gi');
+            return safeText.replace(new RegExp(`(${query})`, 'gi'), '<mark class="search-highlight">$1</mark>');
         } catch {
             // 非法正则：不高亮，原样返回
             return safeText;
         }
-    } else {
-        const safeQuery = escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        regex = new RegExp(`(${safeQuery})`, 'gi');
     }
-    return safeText.replace(regex, '<mark class="search-highlight">$1</mark>');
+    // 普通模式：逐个关键词分别高亮（容错匹配可能无精确子串，此时不高亮也属正常）
+    let out = safeText;
+    for (const term of tokenizeSearchQuery(query)) {
+        const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        out = out.replace(new RegExp(`(${escaped})`, 'gi'), '<mark class="search-highlight">$1</mark>');
+    }
+    return out;
 }
 
 function isRegexValid(pattern) {
@@ -283,8 +285,22 @@ function isRegexValid(pattern) {
     }
 }
 
-// 判断歌曲名是否匹配当前过滤条件（普通模式/正则模式）
-function matchesFilter(name, filter) {
+// ---------- 搜索匹配 ----------
+// 普通模式把查询拆成多个关键词（空格 / 常见标点分隔），
+// 匹配目标 = 文件夹名 + 文件名（去扩展名），并忽略空格、-、_ 等分隔符差异，
+// 因此输入「周杰伦 晴天」能命中「周杰伦 - 晴天.mp3」，深层子目录的歌也能按目录名搜到。
+function tokenizeSearchQuery(query) {
+    if (!query || !query.trim()) return [];
+    return query.toLowerCase()
+        .split(/[\s,，;；、.。!！?？:：_\-–—/\\|()[\]{}【】<>"'`~@#%^&*+=]+/)
+        .filter(Boolean);
+}
+function normalizeForSearch(s) {
+    return s.toLowerCase()
+        .replace(/\.[^.]+$/, '')                       // 去掉扩展名
+        .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '');      // 抹平分隔符差异
+}
+function matchesFilter(name, folder, filter) {
     if (!filter || !filter.trim()) return true;
     if (state.searchMode === 'regex') {
         if (!isRegexValid(filter)) return true; // 非法正则：不过滤，避免误清空列表
@@ -294,7 +310,10 @@ function matchesFilter(name, filter) {
             return true;
         }
     }
-    return name.toLowerCase().includes(filter.toLowerCase());
+    const terms = tokenizeSearchQuery(filter);
+    if (terms.length === 0) return true;
+    const hay = normalizeForSearch(`${folder && folder !== '.' ? folder + ' ' : ''}${name}`);
+    return terms.every(t => hay.includes(normalizeForSearch(t)));
 }
 
 // ---------- 播放错误处理增强 ----------
@@ -845,6 +864,17 @@ downloadBtn.addEventListener('click', () => {
     link.href = path;
     link.download = song;
     link.click();
+
+    // 下载的同时展示该文件内容 SHA-256，方便与本地副本核对
+    fetchSongSha(folder, song).then(sha => {
+        if (sha) {
+            showShaInfo(song.replace(/\.[^.]+$/, ''),
+                sha,
+                '文件已开始下载。这是源文件的内容 SHA-256，可用于校验本地副本与曲库完全一致（同一内容文件的 SHA-256 相同）。');
+        } else {
+            showToast('已开始下载');
+        }
+    });
 });
 
 // ---------- 分享功能 ----------
@@ -864,7 +894,30 @@ function buildShortShareUrl(songId) {
     return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
 }
 
-function applyShareLinkFromQuery() {
+// SHA-256 链接：以文件内容指纹定位，重命名 / 移动目录 / 同名文件都不影响
+function buildShaShareUrl(sha) {
+    const params = new URLSearchParams();
+    params.set('song_sha', sha);
+    return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+}
+
+// 获取当前歌曲的内容 SHA-256（来自本地元数据库）
+async function fetchSongSha(folder, song) {
+    const params = new URLSearchParams();
+    if (folder && folder !== '.') params.set('folder', folder);
+    params.set('song', song);
+    try {
+        const res = await fetch(`/api/meta?${params.toString()}`);
+        if (!res.ok) return null;
+        const meta = await res.json();
+        return meta.sha256 || null;
+    } catch (err) {
+        console.error('获取 SHA-256 失败:', err);
+        return null;
+    }
+}
+
+async function applyShareLinkFromQuery() {
     const params = new URLSearchParams(window.location.search);
 
     // 优先处理 song_id（简短链接）
@@ -877,6 +930,32 @@ function applyShareLinkFromQuery() {
         }
         playSong(index, false);
         return;
+    }
+
+    // 处理 song_sha（SHA-256 链接：向服务端反查定位歌曲）
+    const songSha = params.get('song_sha');
+    if (songSha !== null) {
+        try {
+            const res = await fetch(`/api/by-sha?sha=${encodeURIComponent(songSha)}`);
+            if (!res.ok) {
+                showToast('未找到匹配该 SHA-256 的歌曲（内容可能不在曲库中）');
+                return;
+            }
+            const hit = await res.json();
+            const index = state.flatSongs.findIndex(item =>
+                item.folder === hit.folder && item.song === hit.filename
+            );
+            if (index === -1) {
+                showToast('该歌曲不在当前列表中');
+                return;
+            }
+            playSong(index, false);
+            return;
+        } catch (err) {
+            console.error('sha 分享解析失败:', err);
+            showToast('分享链接解析失败');
+            return;
+        }
     }
 
     // 处理 song + folder（高精度链接）
@@ -909,14 +988,25 @@ function toggleShareMenu() {
     setTimeout(() => document.addEventListener('click', closeMenu), 0);
 }
 
-function copyShareUrl(type) {
+async function copyShareUrl(type) {
     if (state.currentIndex === -1) return;
     const { folder, song } = state.flatSongs[state.currentIndex];
     let url;
     if (type === 'short') {
         const allSongs = state.flatAllSongs || state.flatSongs;
         const fullIndex = allSongs.findIndex(item => item.folder === folder && item.song === song);
+        if (fullIndex === -1) {
+            showToast('未找到该歌曲');
+            return;
+        }
         url = buildShortShareUrl(fullIndex);
+    } else if (type === 'sha') {
+        const sha = await fetchSongSha(folder, song);
+        if (!sha) {
+            showToast('暂时无法获取该歌曲的 SHA-256（可能尚未入库）');
+            return;
+        }
+        url = buildShaShareUrl(sha);
     } else {
         url = buildShareUrl(folder, song);
     }
@@ -937,25 +1027,66 @@ shareBtn.addEventListener('click', (e) => {
     toggleShareMenu();
 });
 
-shareMenu.addEventListener('click', (e) => {
+shareMenu.addEventListener('click', async (e) => {
     const option = e.target.closest('.share-option');
     if (!option) return;
     const type = option.dataset.type;
-    copyShareUrl(type);
+    await copyShareUrl(type);
 });
 
-function fallbackCopy(text) {
+function fallbackCopy(text, okMsg = '分享链接已复制到剪贴板') {
     const input = document.createElement('input');
     input.value = text;
     document.body.appendChild(input);
     input.select();
     try {
         document.execCommand('copy');
-        showToast('分享链接已复制到剪贴板');
+        showToast(okMsg);
     } catch (e) {
-        showToast('复制失败，请手动复制链接');
+        showToast('复制失败，请手动复制');
     }
     document.body.removeChild(input);
+}
+
+// 下载后 / 需要核对时展示单曲 SHA-256（模态框 + 一键复制）
+function showShaInfo(songName, sha, tip) {
+    const overlay = getModalOverlay();
+    overlay.innerHTML = `
+        <div class="modal-box">
+            <div class="modal-message">
+                <div class="sha-song">${escapeHtml(songName)}</div>
+                <div class="sha-label">文件内容 SHA-256</div>
+                <code class="sha-hex">${escapeHtml(sha)}</code>
+                ${tip ? `<div class="sha-hint">${escapeHtml(tip)}</div>` : ''}
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn modal-cancel">复制</button>
+                <button type="button" class="modal-btn modal-ok">完成</button>
+            </div>
+        </div>`;
+    overlay.style.display = 'flex';
+    const done = () => {
+        overlay.removeEventListener('click', onOverlay);
+        overlay.removeEventListener('keydown', onKey);
+        closeModal();
+    };
+    const onOverlay = (e) => { if (e.target === overlay) done(); };
+    const onKey = (e) => { if (e.key === 'Escape') done(); };
+    overlay.addEventListener('click', onOverlay);
+    overlay.addEventListener('keydown', onKey);
+    overlay.querySelector('.modal-cancel').addEventListener('click', async () => {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            try {
+                await navigator.clipboard.writeText(sha);
+                showToast('SHA-256 已复制');
+            } catch {
+                fallbackCopy(sha, 'SHA-256 已复制');
+            }
+        } else {
+            fallbackCopy(sha, 'SHA-256 已复制');
+        }
+    });
+    overlay.querySelector('.modal-ok').addEventListener('click', done);
 }
 
 // ---------- 进度条 ----------
@@ -979,7 +1110,7 @@ function setSearchMode(mode) {
     const isRegex = mode === 'regex';
     modeNormalBtn.classList.toggle('active', !isRegex);
     modeRegexBtn.classList.toggle('active', isRegex);
-    searchInput.placeholder = isRegex ? '输入正则表达式，如 周杰伦|林俊杰' : '搜索音乐...';
+    searchInput.placeholder = isRegex ? '输入正则表达式，如 周杰伦|林俊杰' : '歌名 / 目录，空格分隔多关键词';
     searchInput.classList.remove('regex-invalid');
     // 重新渲染当前结果
     renderSongList(state.songs, searchInput.value);
@@ -1526,7 +1657,7 @@ function renderSongList(songs, filter = '') {
         return a.localeCompare(b);
     });
     for (const folder of folders) {
-        let songsInFolder = songs[folder].filter(name => matchesFilter(name, filter));
+        let songsInFolder = songs[folder].filter(name => matchesFilter(name, folder, filter));
         // 自定义歌单：只保留被引用的歌曲
         if (!isAllPlaylist && playlistRefs) {
             const refSet = new Set(playlistRefs);
@@ -1539,10 +1670,15 @@ function renderSongList(songs, filter = '') {
         const header = document.createElement('div');
         header.className = 'folder-header';
         header.dataset.folder = folder;
+        // 普通模式按关键词匹配子目录名时，在目录名上标出命中词
+        const folderLabel = folder === '.' ? '根目录' : folder;
+        const folderLabelHtml = state.searchMode === 'normal'
+            ? highlightMatches(folderLabel, filter)
+            : escapeHtml(folderLabel);
         header.innerHTML = `
                     <span class="folder-toggle"><ion-icon name="chevron-down" size="small"></ion-icon></span>
                     <span class="folder-icon"><ion-icon name="${folder === '.' ? 'folder-open' : 'folder'}" size="small"></ion-icon></span>
-                    <span>${folder === '.' ? '根目录' : folder}</span>
+                    <span>${folderLabelHtml}</span>
                     <span style="margin-left: auto; opacity: 0.5;">${songsInFolder.length}</span>
                 `;
         group.appendChild(header);
@@ -1685,7 +1821,7 @@ function createGhostItem(ghostKey, num) {
 function attemptAutoPlayOnLoad() {
     // 如果是分享链接，不自动播放
     const shareParams = new URLSearchParams(window.location.search);
-    if (shareParams.has('song') || shareParams.has('song_id')) return;
+    if (shareParams.has('song') || shareParams.has('song_id') || shareParams.has('song_sha')) return;
     if (state.currentIndex === -1) return;
     // 尝试播放第一首
     safePlay().then(() => {
@@ -2216,7 +2352,7 @@ async function init() {
 
         // 尝试自动播放（仅在非分享链接时）
         const qParams = new URLSearchParams(window.location.search);
-        const isShareLink = qParams.has('song') || qParams.has('song_id');
+        const isShareLink = qParams.has('song') || qParams.has('song_id') || qParams.has('song_sha');
         if (!isShareLink && state.flatSongs.length > 0) {
             // 默认选中第一首，但不自动播放，只加载
             playSong(0, false);
