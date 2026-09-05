@@ -17,7 +17,7 @@ export default [
         }
     },
     {
-        files: ['server.js'],
+        files: ['server.js', 'songstore.js'],
         languageOptions: {
             globals: {
                 ...globals.node
