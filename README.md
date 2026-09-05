@@ -1,5 +1,7 @@
 # Simple Local Music Player
 
+<img src=./favicon.svg width="128" height="128">
+
 轻量级本地音乐播放器，基于 Node.js + 原生前端技术栈，支持封面提取、元数据解析、LRC 歌词、系统媒体键控制。
 
 > 在线体验：https://music.epmc.qzz.io/
