@@ -227,6 +227,11 @@ const server = createServer(async (req, res) => {
             return sendJSON(res, 200, library.getSongsMap());
         }
 
+        // ---- /api/library（全库轻量元数据，供歌手/专辑浏览、重复检测、音质徽标）----
+        if (pathname === '/api/library') {
+            return sendJSON(res, 200, library.getLibrary());
+        }
+
         // ---- /api/refresh（后台增量入库，扫描结果不阻塞本次响应）----
         if (pathname === '/api/refresh' && req.method === 'POST') {
             if (library.isSyncing()) {
@@ -234,7 +239,7 @@ const server = createServer(async (req, res) => {
             }
             library.sync().then(result => {
                 if (result?.error) console.error('[scan] 同步出错:', result.error);
-                else console.log(`[scan] 同步完成: 新增 ${result.added}，更新 ${result.updated}，删除 ${result.removed}，未变 ${result.unchanged}，耗时 ${result.ms}ms`);
+                else console.log(`[scan] 同步完成: 新增 ${result.added}，更新 ${result.updated}，删除 ${result.removed}，未变 ${result.unchanged}，回填 ${result.backfilled || 0}，耗时 ${result.ms}ms`);
             }).catch(err => console.error('[scan] 同步异常:', err.message));
             return sendJSON(res, 202, { status: 'scanning' });
         }
@@ -340,7 +345,7 @@ library.sync().then(result => {
     if (result?.error) {
         console.error('[scan] 启动同步失败:', result.error);
     } else {
-        console.log(`[scan] 启动同步完成: 共 ${result.total} 首（新增 ${result.added}，更新 ${result.updated}，删除 ${result.removed}，未变 ${result.unchanged}），耗时 ${result.ms}ms`);
+        console.log(`[scan] 启动同步完成: 共 ${result.total} 首（新增 ${result.added}，更新 ${result.updated}，删除 ${result.removed}，未变 ${result.unchanged}，回填 ${result.backfilled || 0}），耗时 ${result.ms}ms`);
         console.log(`[scan] 数据库: ${library.dbFile}（当前 ${library.count()} 条记录）`);
     }
     server.listen(CONFIG.PORT, '0.0.0.0', () => {
