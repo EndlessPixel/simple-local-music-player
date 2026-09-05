@@ -34,23 +34,43 @@ export function createSongStore({ musicDir, dbFile, coverDir, exts }) {
         container   TEXT,
         sample_rate INTEGER,
         bitrate     INTEGER,
+        album       TEXT,                      -- 专辑名（音乐标签）
+        track_no    INTEGER,                   -- 音轨号（音乐标签）
+        genre       TEXT,                      -- 风格（音乐标签，取第一项）
+        year        INTEGER,                   -- 年份（音乐标签）
         lyrics      TEXT,                      -- 歌词全文（内嵌或外部 LRC）
         lyrics_src  TEXT,                      -- 'embedded' | 'lrc' | NULL
         lrc_relpath TEXT,                      -- 外部 .lrc 相对路径（当来源为 lrc 时）
         lrc_mtime_ms INTEGER,                  -- 外部 .lrc 的 mtime，用于校验失效
         cover_mime  TEXT,                      -- NULL=未知；''=已确认无封面；非空=已有封面缓存
-        parsed_at   TEXT
+        parsed_at   TEXT,
+        meta_rev    INTEGER NOT NULL DEFAULT 1 -- 解析版本：1=旧库待回填 2=已含 album/track_no/genre/year
     );`);
     db.exec('CREATE INDEX IF NOT EXISTS idx_songs_folder ON songs(folder);');
+    // 老库升级：补齐缺失列（幂等，重复启动安全）
+    const tblCols = new Set(
+        db.prepare(`SELECT name FROM pragma_table_info('songs')`).all().map(c => c.name)
+    );
+    const migrateCols = {
+        album: 'TEXT',
+        track_no: 'INTEGER',
+        genre: 'TEXT',
+        year: 'INTEGER',
+        meta_rev: 'INTEGER NOT NULL DEFAULT 1'
+    };
+    for (const [name, ddl] of Object.entries(migrateCols)) {
+        if (!tblCols.has(name)) db.exec(`ALTER TABLE songs ADD COLUMN ${name} ${ddl}`);
+    }
 
     const stmtRow = db.prepare('SELECT * FROM songs WHERE relpath = ?');
-    const stmtLight = db.prepare('SELECT relpath, mtime_ms, size FROM songs');
+    const stmtLight = db.prepare('SELECT relpath, mtime_ms, size, meta_rev FROM songs');
     const stmtFolder = db.prepare('SELECT folder, filename FROM songs ORDER BY folder, filename');
     const stmtUpsert = db.prepare(`INSERT INTO songs (
             relpath, folder, filename, mtime_ms, size, sha256,
-            artist, title, duration, codec, container, sample_rate, bitrate,
-            lyrics, lyrics_src, lrc_relpath, lrc_mtime_ms, cover_mime, parsed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            artist, title, album, track_no, genre, year,
+            duration, codec, container, sample_rate, bitrate,
+            lyrics, lyrics_src, lrc_relpath, lrc_mtime_ms, cover_mime, parsed_at, meta_rev
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(relpath) DO UPDATE SET
             folder = excluded.folder,
             filename = excluded.filename,
@@ -59,6 +79,10 @@ export function createSongStore({ musicDir, dbFile, coverDir, exts }) {
             sha256 = excluded.sha256,
             artist = excluded.artist,
             title = excluded.title,
+            album = excluded.album,
+            track_no = excluded.track_no,
+            genre = excluded.genre,
+            year = excluded.year,
             duration = excluded.duration,
             codec = excluded.codec,
             container = excluded.container,
@@ -69,10 +93,17 @@ export function createSongStore({ musicDir, dbFile, coverDir, exts }) {
             lrc_relpath = excluded.lrc_relpath,
             lrc_mtime_ms = excluded.lrc_mtime_ms,
             cover_mime = NULL,                -- 内容变化后封面状态未知，按需重新确认
-            parsed_at = excluded.parsed_at`);
+            parsed_at = excluded.parsed_at,
+            meta_rev = excluded.meta_rev`);
     const stmtDel = db.prepare('DELETE FROM songs WHERE relpath = ?');
     const stmtSetCover = db.prepare('UPDATE songs SET cover_mime = ? WHERE relpath = ?');
     const stmtSetLyrics = db.prepare('UPDATE songs SET lyrics = ?, lyrics_src = ?, lrc_mtime_ms = ? WHERE relpath = ?');
+    // 老库元数据回填：文件未变化时只补齐标签字段，保留歌词 / 封面状态
+    const stmtBackfill = db.prepare(`UPDATE songs SET
+        artist = ?, title = ?, album = ?, track_no = ?, genre = ?, year = ?,
+        duration = ?, codec = ?, container = ?, sample_rate = ?, bitrate = ?,
+        parsed_at = ?, meta_rev = 2
+        WHERE relpath = ?`);
 
     let syncing = false;
 
@@ -110,7 +141,9 @@ export function createSongStore({ musicDir, dbFile, coverDir, exts }) {
     // 解析单个音频：一次性拿到格式信息 + 内嵌歌词文本（封面按需另解析）
     const parseTrack = async abs => {
         const out = {
-            artist: null, title: null, duration: null, codec: null, container: null,
+            failed: false,
+            artist: null, title: null, album: null, track_no: null, genre: null, year: null,
+            duration: null, codec: null, container: null,
             sample_rate: null, bitrate: null, embeddedLyrics: null
         };
         try {
@@ -118,6 +151,11 @@ export function createSongStore({ musicDir, dbFile, coverDir, exts }) {
             const common = md.common, format = md.format;
             out.artist = common.artist || null;
             out.title = common.title || null;
+            out.album = common.album || null;
+            out.track_no = common.track?.no ?? null;
+            const g = common.genre;
+            out.genre = (Array.isArray(g) ? (g[0] ?? null) : g) || null;
+            out.year = common.year ? Number(common.year) || null : null;
             out.duration = format.duration || null;
             out.codec = format.codec || null;
             out.container = format.container || null;
@@ -126,6 +164,7 @@ export function createSongStore({ musicDir, dbFile, coverDir, exts }) {
             out.embeddedLyrics = common.lyrics?.[0]?.text || null;
         } catch (err) {
             console.warn(`[store] 元数据解析失败，仍保留文件条目: ${abs} -> ${err.message}`);
+            out.failed = true;
         }
         return out;
     };
@@ -159,10 +198,10 @@ export function createSongStore({ musicDir, dbFile, coverDir, exts }) {
 
         stmtUpsert.run(
             relpath, folder, filename, Math.round(st.mtimeMs), st.size, sha256,
-            parsed.artist, parsed.title, parsed.duration,
-            parsed.codec, parsed.container, parsed.sample_rate, parsed.bitrate,
+            parsed.artist, parsed.title, parsed.album, parsed.track_no, parsed.genre, parsed.year,
+            parsed.duration, parsed.codec, parsed.container, parsed.sample_rate, parsed.bitrate,
             lyrics, lyrics_src, lrc_relpath, lrc_mtime_ms,
-            null, new Date().toISOString()
+            null, new Date().toISOString(), 2
         );
         return stmtRow.get(relpath);
     }
@@ -185,7 +224,7 @@ export function createSongStore({ musicDir, dbFile, coverDir, exts }) {
         if (syncing) return { skipped: true };
         syncing = true;
         const t0 = Date.now();
-        let added = 0, updated = 0, removed = 0, unchanged;
+        let added = 0, updated = 0, removed = 0, unchanged, backfilled = 0;
         try {
             // 1) 遍历磁盘
             const disk = [];
@@ -225,29 +264,53 @@ export function createSongStore({ musicDir, dbFile, coverDir, exts }) {
                 if (!diskSet.has(rel)) removedRows.push(row);
             }
 
-            // 3) 待解析 = 新增 + mtime/size 变化
-            const toParse = disk.filter(d => {
+            // 3) 待处理：全量入库 = 新增 + mtime/size 变化；
+            //    轻量回填 = 文件未变但 meta_rev < 2 的旧库行（老库首次升级自动补齐新字段）
+            const toParse = [];
+            const toBackfill = [];
+            for (const d of disk) {
                 const row = existing.get(d.relpath);
-                return !row || row.mtime_ms !== d.mtimeMs || row.size !== d.size;
-            });
-            unchanged = disk.length - toParse.length;
+                if (!row || row.mtime_ms !== d.mtimeMs || row.size !== d.size) {
+                    toParse.push(d);
+                } else if ((row.meta_rev ?? 0) < 2) {
+                    toBackfill.push(d);
+                }
+            }
+            unchanged = disk.length - toParse.length - toBackfill.length;
 
-            // 4) 并发解析入库
+            // 4) 并发处理：全量入库 / 轻量回填共用同一组 worker
+            const tasks = [
+                ...toParse.map(d => ({ d, kind: 'full' })),
+                ...toBackfill.map(d => ({ d, kind: 'backfill' }))
+            ];
             const dirIndexCache = new Map();
             let cursor = 0;
             const worker = async () => {
-                while (cursor < toParse.length) {
-                    const d = toParse[cursor++];
+                while (cursor < tasks.length) {
+                    const { d, kind } = tasks[cursor++];
                     try {
-                        await inspectAndStore(d.abs, d.relpath, d.folder, d.filename,
-                            { mtimeMs: d.mtimeMs, size: d.size }, dirIndexCache);
-                        if (existing.has(d.relpath)) updated++; else added++;
+                        if (kind === 'full') {
+                            await inspectAndStore(d.abs, d.relpath, d.folder, d.filename,
+                                { mtimeMs: d.mtimeMs, size: d.size }, dirIndexCache);
+                            if (existing.has(d.relpath)) updated++; else added++;
+                        } else {
+                            const parsed = await parseTrack(d.abs);
+                            if (!parsed.failed) {
+                                stmtBackfill.run(
+                                    parsed.artist, parsed.title, parsed.album, parsed.track_no,
+                                    parsed.genre, parsed.year, parsed.duration, parsed.codec,
+                                    parsed.container, parsed.sample_rate, parsed.bitrate,
+                                    new Date().toISOString(), d.relpath
+                                );
+                                backfilled++;
+                            }
+                        }
                     } catch (err) {
                         console.error(`[store] 处理失败: ${d.relpath} -> ${err.message}`);
                     }
                 }
             };
-            await Promise.all(Array.from({ length: Math.min(PARSE_CONCURRENCY, toParse.length || 1) }, worker));
+            await Promise.all(Array.from({ length: Math.min(PARSE_CONCURRENCY, tasks.length || 1) }, worker));
 
             // 5) 删除消失的文件记录，并清理其封面缓存
             db.exec('BEGIN');
@@ -279,7 +342,7 @@ export function createSongStore({ musicDir, dbFile, coverDir, exts }) {
 
             db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
             return {
-                total: disk.length, added, updated, removed, unchanged,
+                total: disk.length, added, updated, removed, unchanged, backfilled,
                 ms: Date.now() - t0
             };
         } catch (err) {
@@ -303,6 +366,14 @@ export function createSongStore({ musicDir, dbFile, coverDir, exts }) {
                 (map[r.folder] ??= []).push(r.filename);
             }
             return map;
+        },
+
+        // /api/library —— 全库轻量元数据（不含歌词），供歌手/专辑浏览、重复检测、音质徽标
+        getLibrary() {
+            return db.prepare(`SELECT relpath, folder, filename, sha256,
+                artist, title, album, track_no, genre, year,
+                duration, codec, container, sample_rate, bitrate, size
+                FROM songs ORDER BY folder, filename`).all();
         },
 
         // /api/meta —— 库读（含内容 SHA-256，供下载校验 / sha 分享链接使用）
