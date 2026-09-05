@@ -50,7 +50,11 @@ const state = {
     isPlaying: false,
     isShuffle: false,
     repeatMode: 0,
-    collapsedFolders: new Set(),
+    view: 'folder',              // 浏览维度: 'folder' | 'artist' | 'album'
+    catalog: new Map(),          // `${folder}|${filename}` → /api/library 元数据行
+    duplicates: new Map(),       // sha256 → 内容相同歌曲行（少于 2 的组会自动剔除）
+    pendingReveal: null,         // 待跳转定位目标（重复文件跳转用）
+    collapsed: { folder: new Set(), artist: new Set(), album: new Set() },
     refreshCountdown: AUTO_REFRESH_INTERVAL,
     refreshInterval: null,
     autoRefreshEnabled: true,
@@ -60,6 +64,9 @@ const state = {
 };
 const SEARCH_HISTORY_KEY = 'musicSearchHistory';
 const MAX_SEARCH_HISTORY = 20;
+const BROWSE_VIEW_KEY = 'musicBrowseView';
+const COLLAPSED_VIEWS_KEY = 'collapsedViews';
+const COLLAPSED_FOLDERS_KEY = 'collapsedFolders';
 const audio = document.getElementById('audioPlayer');
 const songList = document.getElementById('songList');
 const songCount = document.getElementById('songCount');
@@ -90,6 +97,7 @@ const speedLabel = speedBtn.querySelector('.speed-label');
 const volumeSlider = document.getElementById('volumeSlider');
 const lyricsPlaceholder = document.getElementById('lyricsPlaceholder');
 const lyricsLines = document.getElementById('lyricsLines');
+const viewTabs = document.getElementById('viewTabs');
 
 let lyricsData = [];       // [{time: seconds, text: string}, ...]
 let lyricsActiveIndex = -1;
@@ -300,7 +308,7 @@ function normalizeForSearch(s) {
         .replace(/\.[^.]+$/, '')                       // 去掉扩展名
         .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '');      // 抹平分隔符差异
 }
-function matchesFilter(name, folder, filter) {
+function matchesFilter(name, folder, filter, extraHay = '') {
     if (!filter || !filter.trim()) return true;
     if (state.searchMode === 'regex') {
         if (!isRegexValid(filter)) return true; // 非法正则：不过滤，避免误清空列表
@@ -312,7 +320,7 @@ function matchesFilter(name, folder, filter) {
     }
     const terms = tokenizeSearchQuery(filter);
     if (terms.length === 0) return true;
-    const hay = normalizeForSearch(`${folder && folder !== '.' ? folder + ' ' : ''}${name}`);
+    const hay = normalizeForSearch(`${extraHay ? extraHay + ' ' : ''}${folder && folder !== '.' ? folder + ' ' : ''}${name}`);
     return terms.every(t => hay.includes(normalizeForSearch(t)));
 }
 
@@ -599,26 +607,24 @@ function updateActiveItem(currentSong) {
     }
 }
 
-function scrollToFolder(folder) {
-    const folderGroups = songList.querySelectorAll('.folder-group');
-    let targetGroup = null;
-    folderGroups.forEach(group => {
-        const header = group.querySelector('.folder-header');
-        if (header && header.dataset.folder === folder) {
-            targetGroup = group;
-        }
-    });
-    if (!targetGroup) return;
-    if (targetGroup.classList.contains('collapsed')) {
-        state.collapsedFolders.delete(folder);
-        localStorage.setItem('collapsedFolders', JSON.stringify([...state.collapsedFolders]));
-        targetGroup.classList.remove('collapsed');
-        const songsContainer = targetGroup.querySelector('.folder-songs');
-        if (songsContainer) songsContainer.classList.remove('collapsed');
-    }
-    // 以当前播放歌曲项（.song-item.active）为中心滚动，而非滚动到文件夹顶部
+function scrollToFolder(_folder) {
+    // 以当前播放歌曲项（.song-item.active）所在分组为中心滚动，适配任意浏览维度；
+    // 所在组若处于折叠状态则先展开。
     const activeItem = songList.querySelector('.song-item.active');
     if (!activeItem) return;
+    const group = activeItem.closest('.folder-group');
+    if (group && group.classList.contains('collapsed')) {
+        const header = group.querySelector('.folder-header');
+        const view = (header && header.dataset.view) || state.view;
+        const key = header ? header.dataset.group : undefined;
+        if (key !== undefined && state.collapsed[view]) {
+            state.collapsed[view].delete(key);
+            persistCollapsed();
+        }
+        group.classList.remove('collapsed');
+        const songsContainer = group.querySelector('.folder-songs');
+        if (songsContainer) songsContainer.classList.remove('collapsed');
+    }
     const itemHeight = activeItem.offsetHeight;
     const containerHeight = songList.clientHeight;
     // 用视口坐标差计算，避免 offsetParent 与滚动容器坐标系不一致导致的乱跳
@@ -1308,10 +1314,14 @@ function areSongMapsEqual(oldMap, newMap) {
 }
 async function refreshSongList() {
     try {
-        const res = await fetch('/api/songs');
-        const newSongs = await res.json();
-        if (areSongMapsEqual(state.songs, newSongs)) return;
+        const [songsRes, libRes] = await Promise.all([fetch('/api/songs'), fetch('/api/library')]);
+        const newSongs = await songsRes.json();
+        const newLib = await libRes.json();
+        const songsChanged = !areSongMapsEqual(state.songs, newSongs);
+        const libChanged = !isLibraryEqual(state.catalog, newLib);
+        if (!songsChanged && !libChanged) return;
         state.songs = newSongs;
+        applyCatalog(newLib);
         renderSongList(state.songs, searchInput.value);
         updateAutoRefreshUi();
     } catch (err) {
@@ -1635,6 +1645,7 @@ function renderSongList(songs, filter = '') {
     }
     songList.innerHTML = '';
     state.flatSongs = [];
+    const view = state.view;
     const isFullList = (filter === '');
     const isAllPlaylist = (currentPlaylist === BUILTIN_PLAYLIST);
     const showItemControls = !isAllPlaylist; // 仅自定义歌单显示勾选/移出
@@ -1643,7 +1654,7 @@ function renderSongList(songs, filter = '') {
     // 当前歌单引用的合法标识集合（用于过滤与幽灵检测）
     const playlistRefs = isAllPlaylist ? null : (playlists[currentPlaylist] || []);
     const validKeys = getValidKeySet();
-    // 自定义歌单内的幽灵标识（主列表已不存在）
+    const refSet = isAllPlaylist ? null : new Set(playlistRefs);
     const ghostKeys = [];
     if (!isAllPlaylist && playlistRefs) {
         for (const key of playlistRefs) {
@@ -1651,41 +1662,89 @@ function renderSongList(songs, filter = '') {
         }
     }
 
+    // 1) 收集可见歌曲（按目录遍历得到稳定的主列表顺序，再做搜索与歌单引用过滤）
+    const visible = [];
     const folders = Object.keys(songs).sort((a, b) => {
         if (a === '.') return -1;
         if (b === '.') return 1;
         return a.localeCompare(b);
     });
     for (const folder of folders) {
-        let songsInFolder = songs[folder].filter(name => matchesFilter(name, folder, filter));
-        // 自定义歌单：只保留被引用的歌曲
-        if (!isAllPlaylist && playlistRefs) {
-            const refSet = new Set(playlistRefs);
-            songsInFolder = songsInFolder.filter(name => refSet.has(getSongKey(folder, name)));
+        const names = [...songs[folder]].sort();
+        for (const song of names) {
+            if (refSet && !refSet.has(getSongKey(folder, song))) continue;
+            const row = state.catalog.get(getSongKey(folder, song));
+            const extra = extraSearchHay(view, row, song);
+            if (!matchesFilter(song, folder, filter, extra)) continue;
+            visible.push({ folder, song });
         }
-        if (songsInFolder.length === 0) continue;
-        const isCollapsed = state.collapsedFolders.has(folder);
+    }
+
+    // 2) 按浏览维度分组
+    const unknownLabel = view === 'album' ? '未知专辑' : '未知歌手';
+    const byLabel = new Map();
+    for (const { folder, song } of visible) {
+        const row = state.catalog.get(getSongKey(folder, song));
+        let label = folder;
+        if (view === 'artist') {
+            label = artistOf(row, song) || unknownLabel;
+        } else if (view === 'album') {
+            label = albumOf(row) || unknownLabel;
+        }
+        let grp = byLabel.get(label);
+        if (!grp) {
+            grp = { label, entries: [] };
+            byLabel.set(label, grp);
+        }
+        grp.entries.push({ folder, song });
+    }
+    let groupList = [...byLabel.values()];
+    if (view !== 'folder') {
+        groupList.sort((a, b) => {
+            const an = a.label === unknownLabel ? 1 : 0;
+            const bn = b.label === unknownLabel ? 1 : 0;
+            return (an - bn) || a.label.localeCompare(b.label, 'zh');
+        });
+    }
+    // 专辑视图：组内按音轨号排序（无音轨号排在末尾），更符合实体专辑直觉
+    if (view === 'album') {
+        for (const grp of groupList) {
+            grp.entries.sort((x, y) => {
+                const tx = Number(state.catalog.get(getSongKey(x.folder, x.song))?.track_no) || Infinity;
+                const ty = Number(state.catalog.get(getSongKey(y.folder, y.song))?.track_no) || Infinity;
+                return (tx - ty) || x.folder.localeCompare(y.folder) || x.song.localeCompare(y.song);
+            });
+        }
+    }
+
+    // 3) 渲染分组
+    const collapsedSet = state.collapsed[view];
+    for (const grp of groupList) {
+        const label = grp.label;
+        const isCollapsed = collapsedSet.has(label);
         const group = document.createElement('div');
         group.className = 'folder-group' + (isCollapsed ? ' collapsed' : '');
         const header = document.createElement('div');
         header.className = 'folder-header';
-        header.dataset.folder = folder;
-        // 普通模式按关键词匹配子目录名时，在目录名上标出命中词
-        const folderLabel = folder === '.' ? '根目录' : folder;
-        const folderLabelHtml = state.searchMode === 'normal'
-            ? highlightMatches(folderLabel, filter)
-            : escapeHtml(folderLabel);
+        header.dataset.view = view;
+        header.dataset.group = label;
+        header.dataset.folder = label; // 兼容旧逻辑中对 header.dataset.folder 的读取
+        const labelHtml = state.searchMode === 'normal'
+            ? highlightMatches(label, filter)
+            : escapeHtml(label);
+        const iconName = view === 'folder'
+            ? (label === '.' ? 'folder-open' : 'folder')
+            : view === 'artist' ? 'person-circle' : 'disc';
         header.innerHTML = `
                     <span class="folder-toggle"><ion-icon name="chevron-down" size="small"></ion-icon></span>
-                    <span class="folder-icon"><ion-icon name="${folder === '.' ? 'folder-open' : 'folder'}" size="small"></ion-icon></span>
-                    <span>${folderLabelHtml}</span>
-                    <span style="margin-left: auto; opacity: 0.5;">${songsInFolder.length}</span>
+                    <span class="folder-icon"><ion-icon name="${iconName}" size="small"></ion-icon></span>
+                    <span class="folder-label">${labelHtml}</span>
+                    <span style="margin-left: auto; opacity: 0.5;">${grp.entries.length}</span>
                 `;
         group.appendChild(header);
         const songsContainer = document.createElement('div');
         songsContainer.className = 'folder-songs' + (isCollapsed ? ' collapsed' : '');
-        const sortedSongs = [...songsInFolder].sort();
-        for (const song of sortedSongs) {
+        for (const { folder, song } of grp.entries) {
             const item = createSongItem(folder, song, totalSongs + 1, filter, showItemControls);
             songsContainer.appendChild(item);
             state.flatSongs.push({ folder, song });
@@ -1695,7 +1754,7 @@ function renderSongList(songs, filter = '') {
         songList.appendChild(group);
     }
 
-    // 渲染幽灵引用行（标红），点击弹窗提示并剔除
+    // 4) 渲染幽灵引用行（标红），点击弹窗提示并剔除
     for (const ghostKey of ghostKeys) {
         const item = createGhostItem(ghostKey, totalSongs + 1);
         const ghostGroup = document.createElement('div');
@@ -1729,9 +1788,42 @@ function renderSongList(songs, filter = '') {
     }
     songList.scrollTop = currentScroll;
     updateActiveItem(currentSong);
+    // 渲染完成后处理待定位目标（如重复文件跳转）
+    if (state.pendingReveal) {
+        const r = state.pendingReveal;
+        state.pendingReveal = null;
+        flashAndScrollTo(r.folder, r.song);
+    }
 }
 
-// 创建普通歌曲行（含可选勾选框与移出按钮）
+// 标签信息辅助：优先音乐标签，缺失时回退文件名“歌手 - 歌名”启发式
+function guessArtistFromName(filename) {
+    const base = String(filename || '').replace(/\.[^.]+$/, '');
+    let m = base.match(/^\s*(.+?)\s*[-–—]\s*(.+?)\s*$/);
+    if (!m) m = base.match(/^\s*(.+?)\s*\/\s*(.+?)\s*$/);
+    if (!m) return null;
+    const artist = m[1].trim();
+    return artist && artist.length <= 40 ? artist : null;
+}
+function artistOf(row, song) {
+    const a = row && row.artist ? row.artist.trim() : '';
+    if (a) return a;
+    return guessArtistFromName(song) || '';
+}
+function albumOf(row) {
+    return row && row.album ? row.album.trim() : '';
+}
+function extraSearchHay(view, row, song) {
+    if (view === 'artist') return artistOf(row, song);
+    if (view === 'album') return `${albumOf(row) || ''} ${artistOf(row, song) || ''}`.trim();
+    return '';
+}
+function isLosslessExt(ext) {
+    return ['FLAC', 'WAV', 'APE', 'WV', 'ALAC', 'AIFF', 'AIF', 'DSF', 'DFF', 'TTA']
+        .includes(String(ext).toUpperCase());
+}
+
+// 创建普通歌曲行（勾选框 + 音质徽标 + 时长 + 重复提示 + 可选移出按钮）
 function createSongItem(folder, song, num, filter, showItemControls) {
     const item = document.createElement('div');
     item.className = 'song-item';
@@ -1739,6 +1831,11 @@ function createSongItem(folder, song, num, filter, showItemControls) {
     item.dataset.folder = folder;
     item.dataset.song = song;
     const key = getSongKey(folder, song);
+    const row = state.catalog.get(key);
+    const base = song.replace(/\.[^.]+$/, '');
+    const dot = song.lastIndexOf('.');
+    const ext = dot > 0 ? song.slice(dot + 1).toUpperCase() : '';
+
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.className = 'song-checkbox';
@@ -1756,23 +1853,75 @@ function createSongItem(folder, song, num, filter, showItemControls) {
     const playIcon = document.createElement('span');
     playIcon.className = 'song-play';
     playIcon.innerHTML = '<ion-icon name="play" size="small"></ion-icon>';
+
     const info = document.createElement('div');
     info.className = 'song-info';
+    const titleRow = document.createElement('div');
+    titleRow.className = 'song-title-row';
     const title = document.createElement('div');
     title.className = 'song-title-text';
     if (filter && filter.trim()) {
-        title.innerHTML = highlightMatches(song.replace(/\.[^.]+$/, ''), filter);
+        title.innerHTML = highlightMatches(base, filter);
     } else {
-        title.textContent = song.replace(/\.[^.]+$/, '');
+        title.textContent = base;
+    }
+    titleRow.appendChild(title);
+    // 音质徽标：格式 + 高解析/无损（元数据入库后展示）
+    const sr = Number(row?.sample_rate) || 0;
+    const chips = [];
+    if (ext && /^[a-z0-9]{2,5}$/i.test(ext)) chips.push(ext);
+    if (row && sr > 48000) chips.push('Hi-Res');
+    else if (row && sr && isLosslessExt(ext)) chips.push('无损');
+    if (chips.length > 0) {
+        const chipRow = document.createElement('span');
+        chipRow.className = 'song-badge-row';
+        for (const c of chips) {
+            const chip = document.createElement('span');
+            chip.className = 'song-badge' + (c === 'Hi-Res' ? ' badge-hires' : '');
+            chip.textContent = c;
+            if (c === 'Hi-Res' && sr) chip.title = `${sr} Hz`;
+            chipRow.appendChild(chip);
+        }
+        titleRow.appendChild(chipRow);
     }
     const folderName = document.createElement('div');
     folderName.className = 'song-folder';
-    folderName.textContent = folder === '.' ? '根目录' : folder;
-    info.appendChild(title);
+    const sub = [];
+    const artist = artistOf(row, song);
+    if (artist) sub.push(artist);
+    sub.push(folder === '.' ? '根目录' : folder);
+    folderName.textContent = sub.join(' · ');
+    info.appendChild(titleRow);
     info.appendChild(folderName);
     item.appendChild(numEl);
     item.appendChild(playIcon);
     item.appendChild(info);
+
+    // 行尾：时长 + 重复副本提示/跳转
+    const metaEl = document.createElement('div');
+    metaEl.className = 'song-meta';
+    const dur = Number(row?.duration);
+    if (row && !isNaN(dur) && dur > 0) {
+        const durEl = document.createElement('span');
+        durEl.className = 'song-duration';
+        durEl.textContent = formatTime(dur);
+        metaEl.appendChild(durEl);
+    }
+    const dupList = row && row.sha256 ? state.duplicates.get(row.sha256) : null;
+    if (dupList && dupList.length > 1) {
+        const dupBtn = document.createElement('button');
+        dupBtn.type = 'button';
+        dupBtn.className = 'song-dup-btn';
+        dupBtn.title = `另有 ${dupList.length - 1} 份内容相同的文件，点击定位到下一份`;
+        dupBtn.innerHTML = '<ion-icon name="albums" size="small"></ion-icon>';
+        dupBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            jumpToDuplicate(folder, song);
+        });
+        metaEl.appendChild(dupBtn);
+    }
+    if (metaEl.children.length > 0) item.appendChild(metaEl);
+
     if (showItemControls) {
         const removeBtn = document.createElement('button');
         removeBtn.className = 'song-remove-btn';
@@ -2039,6 +2188,34 @@ function buildApiDoc() {
             notes: '根目录的歌曲使用 <code>"."</code> 表示文件夹名。'
         },
         {
+            method: 'GET', path: '/api/library',
+            title: '获取全库轻量元数据',
+            desc: '一次返回全库元数据行（不含歌词），供歌手 / 专辑浏览、重复文件检测与音质徽标使用。',
+            params: null,
+            example: `// 响应示例（每首一行）
+[
+    {
+        "relpath":  "Pop/hit.mp3",
+        "folder":   "Pop",
+        "filename": "hit.mp3",
+        "sha256":   "abc123...",
+        "artist":   "周杰伦",
+        "title":    "晴天",
+        "album":    "叶惠美",
+        "track_no": 3,
+        "genre":    "Pop",
+        "year":     2003,
+        "duration": 269.3,
+        "codec":    "MPEG 1 Layer 3",
+        "container":"MP3",
+        "sample_rate": 44100,
+        "bitrate":  128000,
+        "size":     4300000
+    }
+]`,
+            notes: '字段 <code>sha256</code> / <code>artist</code> / <code>album</code> 等按标签情况可能为 <code>null</code>。'
+        },
+        {
             method: 'GET', path: '/api/cover',
             title: '获取歌曲封面',
             desc: '返回歌曲封面（按需解析一次后落盘缓存，之后直接读文件）。',
@@ -2064,6 +2241,20 @@ function buildApiDoc() {
     "duration": 269.3
 }`,
             notes: '支持的格式：<code>MP3</code>、<code>FLAC</code>、<code>WAV</code>、<code>OGG</code>、<code>M4A</code>。未识别字段返回 <code>null</code>。'
+        },
+        {
+            method: 'GET', path: '/api/by-sha',
+            title: '按内容 SHA-256 反查歌曲',
+            desc: '根据文件内容 SHA-256 指纹定位歌曲（sha 分享链接使用），改名 / 移动文件也不失效。',
+            params: [
+                { name: 'sha', type: 'string', desc: '64 位十六进制内容指纹' }
+            ],
+            example: `// 响应示例
+{
+    "folder":   "Pop",
+    "filename": "hit.mp3"
+}`,
+            notes: '未找到返回 <code>404</code>。'
         },
         {
             method: 'GET', path: '/api/commits',
@@ -2260,17 +2451,18 @@ function handleSongListClick(e) {
     const folderHeader = e.target.closest('.folder-header');
     if (folderHeader) {
         e.stopPropagation();
-        const folder = folderHeader.dataset.folder;
+        const view = folderHeader.dataset.view || state.view;
+        const key = folderHeader.dataset.group;
         const group = folderHeader.parentElement;
         const songsContainer = group.querySelector('.folder-songs');
-        if (state.collapsedFolders.has(folder)) {
-            state.collapsedFolders.delete(folder);
-        } else {
-            state.collapsedFolders.add(folder);
+        const set = state.collapsed[view];
+        if (set && key !== undefined) {
+            if (set.has(key)) set.delete(key);
+            else set.add(key);
+            persistCollapsed();
         }
-        localStorage.setItem('collapsedFolders', JSON.stringify([...state.collapsedFolders]));
         group.classList.toggle('collapsed');
-        songsContainer.classList.toggle('collapsed');
+        if (songsContainer) songsContainer.classList.toggle('collapsed');
         return;
     }
     const songItem = e.target.closest('.song-item');
@@ -2280,6 +2472,141 @@ function handleSongListClick(e) {
     }
 }
 songList.addEventListener('click', handleSongListClick);
+
+// ============ 浏览维度（文件夹 / 歌手 / 专辑）+ 元数据目录 + 重复检测 ============
+function persistCollapsed() {
+    localStorage.setItem(COLLAPSED_FOLDERS_KEY, JSON.stringify([...state.collapsed.folder]));
+    const other = {};
+    for (const v of ['artist', 'album']) other[v] = [...state.collapsed[v]];
+    localStorage.setItem(COLLAPSED_VIEWS_KEY, JSON.stringify(other));
+}
+function updateViewTabsUi() {
+    if (!viewTabs) return;
+    for (const btn of viewTabs.querySelectorAll('.view-tab')) {
+        const on = btn.dataset.view === state.view;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-selected', String(on));
+    }
+}
+function setBrowseView(view, rerender = true) {
+    if (!view || !['folder', 'artist', 'album'].includes(view)) return;
+    if (state.view === view) return;
+    state.view = view;
+    localStorage.setItem(BROWSE_VIEW_KEY, view);
+    updateViewTabsUi();
+    if (rerender) renderSongList(state.songs, searchInput.value);
+}
+if (viewTabs) {
+    viewTabs.addEventListener('click', (e) => {
+        const btn = e.target.closest('.view-tab');
+        if (btn && btn.dataset.view) setBrowseView(btn.dataset.view, true);
+    });
+}
+// 将 /api/library 行集写入 state.catalog 并重建重复索引
+function applyCatalog(rows) {
+    const map = new Map();
+    for (const r of rows || []) {
+        if (!r || r.filename === undefined || r.folder === undefined) continue;
+        map.set(`${r.folder}|${r.filename}`, r);
+    }
+    state.catalog = map;
+    rebuildDuplicates();
+}
+function rebuildDuplicates() {
+    const bySha = new Map();
+    for (const r of state.catalog.values()) {
+        if (!r.sha256) continue;
+        const arr = bySha.get(r.sha256);
+        if (arr) arr.push(r);
+        else bySha.set(r.sha256, [r]);
+    }
+    const dup = new Map();
+    for (const [sha, arr] of bySha) {
+        if (arr.length > 1) dup.set(sha, arr);
+    }
+    state.duplicates = dup;
+}
+function catalogSig(map) {
+    const out = [];
+    for (const [k, r] of map) {
+        out.push(`${k}\u0001${r.sha256 || ''}\u0001${r.artist || ''}\u0001${r.title || ''}\u0001${r.album || ''}\u0001${r.track_no || ''}\u0001${r.sample_rate || ''}\u0001${r.bitrate || ''}\u0001${r.duration || ''}\u0001${r.size || ''}`);
+    }
+    return out.sort().join('\n');
+}
+function isLibraryEqual(map, rows) {
+    const next = new Map();
+    for (const r of rows || []) {
+        if (!r || r.filename === undefined) continue;
+        next.set(`${r.folder}|${r.filename}`, r);
+    }
+    return catalogSig(map) === catalogSig(next);
+}
+// 重复文件跳转：循环定位到“下一份内容相同”的文件
+function jumpToDuplicate(folder, song) {
+    const row = state.catalog.get(getSongKey(folder, song));
+    const list = row && row.sha256 ? state.duplicates.get(row.sha256) : null;
+    if (!list || list.length < 2) {
+        showToast('库中暂无其它内容相同的副本');
+        return;
+    }
+    const me = getSongKey(folder, song);
+    let next = null;
+    for (let i = 0; i < list.length; i++) {
+        const r = list[i];
+        if (`${r.folder}|${r.filename}` === me) {
+            next = list[(i + 1) % list.length];
+            break;
+        }
+    }
+    if (!next) next = list[0];
+    if (next.folder === folder && next.filename === song) {
+        showToast('仅此一份副本');
+        return;
+    }
+    revealSong(next.folder, next.filename);
+}
+// 确保目标可见后滚动并闪烁高亮（当前集不存在则切回目录视图并清空搜索）
+function revealSong(folder, song) {
+    if (state.flatSongs.some(s => s.folder === folder && s.song === song)) {
+        flashAndScrollTo(folder, song);
+        return;
+    }
+    if (searchInput.value.trim()) searchInput.value = '';
+    if (state.view !== 'folder') {
+        state.view = 'folder';
+        localStorage.setItem(BROWSE_VIEW_KEY, state.view);
+    }
+    renderSongList(state.songs, searchInput.value);
+    flashAndScrollTo(folder, song);
+    updateViewTabsUi();
+}
+function findSongItem(folder, song) {
+    for (const el of songList.querySelectorAll('.song-item')) {
+        if (el.dataset.folder === folder && el.dataset.song === song) return el;
+    }
+    return null;
+}
+function flashAndScrollTo(folder, song) {
+    const item = findSongItem(folder, song);
+    if (!item) return;
+    const group = item.closest('.folder-group');
+    if (group && group.classList.contains('collapsed')) {
+        const header = group.querySelector('.folder-header');
+        const view = (header && header.dataset.view) || state.view;
+        const key = header ? header.dataset.group : undefined;
+        if (key !== undefined && state.collapsed[view]) {
+            state.collapsed[view].delete(key);
+            persistCollapsed();
+        }
+        group.classList.remove('collapsed');
+        const sc = group.querySelector('.folder-songs');
+        if (sc) sc.classList.remove('collapsed');
+    }
+    item.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    item.classList.add('dup-flash');
+    setTimeout(() => item.classList.remove('dup-flash'), 1400);
+}
+
 function closeMobileSongList() {
     const menuToggle = document.getElementById('menuToggle');
     if (menuToggle && menuToggle.checked) menuToggle.checked = false;
@@ -2318,10 +2645,20 @@ async function init() {
 
         document.getElementById('themeToggle').addEventListener('click', toggleTheme);
 
-        const savedCollapsed = localStorage.getItem('collapsedFolders');
+        const savedCollapsed = localStorage.getItem(COLLAPSED_FOLDERS_KEY);
         if (savedCollapsed) {
-            try { state.collapsedFolders = new Set(JSON.parse(savedCollapsed)); } catch { }
+            try { state.collapsed.folder = new Set(JSON.parse(savedCollapsed)); } catch { }
         }
+        const savedCollapsedViews = localStorage.getItem(COLLAPSED_VIEWS_KEY);
+        if (savedCollapsedViews) {
+            try {
+                const obj = JSON.parse(savedCollapsedViews);
+                if (Array.isArray(obj.artist)) state.collapsed.artist = new Set(obj.artist);
+                if (Array.isArray(obj.album)) state.collapsed.album = new Set(obj.album);
+            } catch { }
+        }
+        const savedView = localStorage.getItem(BROWSE_VIEW_KEY);
+        if (savedView === 'artist' || savedView === 'album') state.view = savedView;
         const savedAutoRefresh = localStorage.getItem('musicAutoRefreshEnabled');
         if (savedAutoRefresh !== null) {
             state.autoRefreshEnabled = savedAutoRefresh === '1';
@@ -2329,8 +2666,10 @@ async function init() {
         loadSearchHistory();
         initSidebarResizer();
         ensureSongCountLayout(); // 先建立计数栏结构，避免首屏出现“加载中...”冗余提示
-        const res = await fetch('/api/songs');
-        state.songs = await res.json();
+        const [songsRes, libRes] = await Promise.all([fetch('/api/songs'), fetch('/api/library')]);
+        state.songs = await songsRes.json();
+        applyCatalog(await libRes.json());
+        updateViewTabsUi();
         initPlaylists(); // 加载歌单数据、绑定事件、按当前歌单渲染列表
         applyShareLinkFromQuery();
         updateAutoRefreshUi();
