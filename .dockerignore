@@ -1,0 +1,26 @@
+# ---- 版本控制 ----
+.git
+.gitignore
+
+# ---- 依赖（镜像内由 npm ci 重新安装，不打包宿主 node_modules）----
+node_modules
+
+# ---- 音乐与运行时数据（按卷挂载，绝不打进镜像）----
+music
+data
+downloads
+
+# ---- 项目运行不需要的文件 ----
+old
+old-2
+push.sh
+eslint.config.js
+start.sh
+start.bat
+*.log
+
+# ---- 系统垃圾 ----
+Thumbs.db
+.DS_Store
+*.tmp
+*.temp
