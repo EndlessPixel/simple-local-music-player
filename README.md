@@ -55,7 +55,7 @@ npm install        # 安装唯一的运行依赖：music-metadata（解析音频
 node server.js     # 或：bash start.sh / start.bat
 ```
 
-浏览器访问 **http://localhost:18250**（服务默认监听 `0.0.0.0`，同局域网内手机也能访问）。
+在浏览器打开 **`http://localhost:18250`** —— 服务默认监听 `0.0.0.0`，同局域网内手机也能访问。
 
 ### 放入音乐
 
