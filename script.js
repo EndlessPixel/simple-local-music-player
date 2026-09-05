@@ -1893,7 +1893,7 @@ function buildApiDoc() {
         {
             method: 'GET', path: '/api/songs',
             title: '获取音乐列表',
-            desc: '扫描音乐目录，返回按文件夹分组的歌曲列表。',
+            desc: '读取本地元数据库，返回按文件夹分组的歌曲列表（入库后无需实时解析）。',
             params: null,
             example: `{
     ".":       ["song.mp3", "demo.flac"],
@@ -1905,7 +1905,7 @@ function buildApiDoc() {
         {
             method: 'GET', path: '/api/cover',
             title: '获取歌曲封面',
-            desc: '查找并返回歌曲的内嵌封面图片。',
+            desc: '返回歌曲封面（按需解析一次后落盘缓存，之后直接读文件）。',
             params: [
                 { name: 'folder', type: 'string', desc: '文件夹名称（需 URL 编码）' },
                 { name: 'song', type: 'string', desc: '歌曲文件名（需 URL 编码）' }
@@ -1916,7 +1916,7 @@ function buildApiDoc() {
         {
             method: 'GET', path: '/api/meta',
             title: '获取歌曲元数据',
-            desc: '读取音频文件的元数据，包括歌手、标题和时长。',
+            desc: '读取歌手、标题和时长等元数据；数据来自本地数据库，首次入库后不再解析音频。',
             params: [
                 { name: 'folder', type: 'string', desc: '文件夹名称（需 URL 编码）' },
                 { name: 'song', type: 'string', desc: '歌曲文件名（需 URL 编码）' }
