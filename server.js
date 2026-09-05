@@ -257,6 +257,22 @@ const server = createServer(async (req, res) => {
             return res.writeHead(404).end('No cover');
         }
 
+        // ---- /api/by-sha（按文件内容 SHA-256 反查歌曲，供 sha 分享链接打开定位）----
+        if (pathname === '/api/by-sha') {
+            const sha = (query.sha || '').trim().toLowerCase();
+            const hit = sha ? library.lookupBySha(sha) : null;
+            if (!hit) return sendJSON(res, 404, { error: 'No song matches this sha256' });
+            return sendJSON(res, 200, {
+                folder: hit.folder,
+                filename: hit.filename,
+                relpath: hit.relpath,
+                sha256: hit.sha256,
+                artist: hit.artist,
+                title: hit.title,
+                duration: hit.duration
+            });
+        }
+
         // ---- /api/meta（读库）----
         if (pathname === '/api/meta') {
             const fp = resolveSongParam(query);
