@@ -1468,6 +1468,38 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
     background: var(--primary-hover);
 }
 
+/* ===== SHA-256 展示 ===== */
+.sha-song {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    word-break: break-all;
+}
+.sha-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+.sha-hex {
+    display: block;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    word-break: break-all;
+    user-select: all;
+}
+.sha-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 10px;
+    line-height: 1.5;
+}
+
 /* ===== 响应式 ===== */
 @media (max-width: 900px) {
     .app {
