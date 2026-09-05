@@ -28,6 +28,13 @@ export default [
     },
     pluginJs.configs.recommended,
     {
+        // 前端脚本沿用既有 LF 行尾（历史遗留），不强制 CRLF
+        files: ['script.js'],
+        rules: {
+            'linebreak-style': 'off'
+        }
+    },
+    {
         rules: {
             'no-unused-vars': ['error', {
                 vars: 'all',
