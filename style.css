@@ -1594,3 +1594,102 @@ body { transition: background-color 0.35s ease, color 0.35s ease; }
         font-size: 20px;
     }
 }
+
+/* ===== 浏览维度切换（文件夹 / 歌手 / 专辑）===== */
+.view-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 10px 12px 0;
+}
+.view-tab {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 0 9px;
+    font-size: 13px;
+    font-family: inherit;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.view-tab:hover {
+    color: var(--text);
+}
+.view-tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+.folder-header .folder-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ===== 歌曲行音质徽标 / 时长 / 重复副本 ===== */
+.song-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+.song-title-row .song-title-text {
+    flex: 1;
+    min-width: 0;
+}
+.song-badge-row {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 3px;
+}
+.song-badge {
+    font-size: 9px;
+    line-height: 1;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 2px 4px;
+    border-radius: 3px;
+    background: var(--surface-hover);
+    color: var(--text-muted);
+}
+.song-badge.badge-hires {
+    color: #d97706;
+    background: rgba(217, 119, 6, 0.12);
+}
+.song-meta {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 2px;
+}
+.song-duration {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+}
+.song-dup-btn {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    color: #d97706;
+    background: rgba(217, 119, 6, 0.1);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.song-dup-btn:hover {
+    background: rgba(217, 119, 6, 0.22);
+}
+.song-item.dup-flash {
+    border-radius: var(--radius);
+    box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.9);
+}
