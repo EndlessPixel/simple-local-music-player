@@ -2,7 +2,7 @@ import { createServer } from 'http';
 import https from 'https';
 import { createReadStream } from 'fs';
 import { promises as fs } from 'fs';
-import { join, resolve, extname, dirname } from 'path';
+import { join, resolve, extname, dirname, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { createSongStore } from './songstore.js';
 
@@ -47,12 +47,22 @@ const library = createSongStore({
 // ========== 统一路径安全校验 ==========
 function validatePath(baseDir, subPath) {
     if (!subPath) return null;
-    // 解码 URL 编码
-    const decoded = subPath.includes('%') ? decodeURIComponent(subPath) : subPath;
+    // 解码 URL 编码（非法编码如 %zz 会导致 URIError，按非法路径处理）
+    let decoded = subPath;
+    if (subPath.includes('%')) {
+        try {
+            decoded = decodeURIComponent(subPath);
+        } catch {
+            return null;
+        }
+    }
     // 禁止路径穿越
     if (/^\.\./.test(decoded) || /\/\.\./.test(decoded)) return null;
-    const resolved = resolve(join(baseDir, decoded));
-    if (!resolved.startsWith(resolve(baseDir))) return null;
+    const base = resolve(baseDir);
+    const resolved = resolve(join(base, decoded));
+    // 目录边界校验：必须等于根目录或以「根目录 + 分隔符」开头，
+    // 避免 /music 与 /music-other 这类前缀相同的兄弟目录被误判为合法
+    if (resolved !== base && !resolved.startsWith(base + sep)) return null;
     return resolved;
 }
 
@@ -121,10 +131,12 @@ function parseRange(range, size) {
     let [, s, e] = m;
     s = s === '' ? undefined : Number(s);
     e = e === '' ? undefined : Number(e);
+    // 非法数字（如 bytes=abc-def）直接视为无 Range
+    if ((s !== undefined && !Number.isInteger(s)) || (e !== undefined && !Number.isInteger(e))) return null;
     if (s === undefined && e === undefined) return null;
     if (s === undefined) { s = Math.max(0, size - e); e = size - 1; }
-    else if (e === undefined) e = size - 1;
-    if (s >= size || e >= size || s > e) return null;
+    else if (e === undefined || e >= size) e = size - 1; // 超出文件末尾时截断到末尾，而不是返回 416
+    if (s >= size || s > e) return null;
     return { start: s, end: e, len: e - s + 1 };
 }
 
@@ -236,6 +248,17 @@ const server = createServer(async (req, res) => {
         if (pathname === '/api/refresh' && req.method === 'POST') {
             if (library.isSyncing()) {
                 return sendJSON(res, 202, { status: 'scanning', message: '已在扫描中' });
+            }
+            // wait=1：等人为触发的刷新真正完成后再返回，前端才能立刻读到最新列表
+            if (query.wait === '1') {
+                const result = await library.sync();
+                return sendJSON(res, 200, {
+                    status: 'done',
+                    added: result.added,
+                    updated: result.updated,
+                    removed: result.removed,
+                    total: result.total
+                });
             }
             library.sync().then(result => {
                 if (result?.error) console.error('[scan] 同步出错:', result.error);

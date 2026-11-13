@@ -39,3 +39,4 @@ test.py
 # 本地数据库与封面缓存（运行时自动生成，勿提交）
 data/
 .directory
+.codebuddy/

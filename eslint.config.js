@@ -9,8 +9,7 @@ export default [
         files: ['script.js'],
         languageOptions: {
             globals: {
-                ...globals.browser,
-                volumeSlider: 'readonly'
+                ...globals.browser
             },
             ecmaVersion: 'latest',
             sourceType: 'script'
@@ -38,7 +37,7 @@ export default [
             'no-console': ['warn', { allow: ['error', 'warn'] }],
             'prefer-const': 'warn',
             'no-var': 'warn',
-            indent: ['error', 4],
+            indent: ['error', 4, { SwitchCase: 1 }],
             quotes: ['error', 'single'],
             semi: ['error', 'always'],
             'comma-dangle': ['error', 'never'],

@@ -11,7 +11,7 @@ import { extname, join } from 'path';
 import { parseFile } from 'music-metadata';
 
 // 外部 LRC 的常见命名变体（用于扫描时发现伴唱文件）
-const LRC_SUFFIXES = ['', '_歌词', '-歌词', '_lrc', '-lrc', '_lyric', '-lyric'];
+const LRC_SUFFIXES = ['', '_歌词', '-歌词', '_lrc', '-lrc', '_lyric', '-lyric', '_lyrics', '-lyrics'];
 const LRC_EXTENSIONS = ['.lrc', '.LRC'];
 // 首次导入 / 增量重解析的并发数
 const PARSE_CONCURRENCY = 4;
@@ -49,7 +49,7 @@ export function createSongStore({ musicDir, dbFile, coverDir, exts }) {
     db.exec('CREATE INDEX IF NOT EXISTS idx_songs_folder ON songs(folder);');
     // 老库升级：补齐缺失列（幂等，重复启动安全）
     const tblCols = new Set(
-        db.prepare(`SELECT name FROM pragma_table_info('songs')`).all().map(c => c.name)
+        db.prepare('SELECT name FROM pragma_table_info(\'songs\')').all().map(c => c.name)
     );
     const migrateCols = {
         album: 'TEXT',
@@ -318,9 +318,6 @@ export function createSongStore({ musicDir, dbFile, coverDir, exts }) {
                 for (const row of removedRows) {
                     stmtDel.run(row.relpath);
                     removed++;
-                    if (row.sha256) {
-                        try { await fsp.unlink(join(coverDir, row.sha256)); } catch { /* 忽略清理失败 */ }
-                    }
                 }
                 db.exec('COMMIT');
             } catch (err) {
